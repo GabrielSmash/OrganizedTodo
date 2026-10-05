@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.organizedtodo" path="/org/gnome/shell/extensions/organizedtodo/">
+    <key name="workspace" type="s">
+      <default>''</default>
+      <summary>Projects, lists and todos</summary>
+      <description>JSON document: projects contain lists, lists contain todos. Empty on first run.</description>
+    </key>
+    <key name="open-organizedtodo" type="as">
+      <default><![CDATA[['<Alt><Shift>space']]]></default>
+      <summary>Shortcut to open the extension</summary>
+      <description>Press Alt+Shift+Space to open the extension.</description>
+    </key>
+  </schema>
+</schemalist>

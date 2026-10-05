@@ -1,0 +1,241 @@
+/* OrganizedTodo: minimal dark style, accent #78aeed */
+
+.organizedtodo-main {
+    spacing: 2px;
+}
+
+/* ---------- panel icon ---------- */
+/* Not `system-status-icon`: the shell theme adds 10px of padding and margin per side to that class */
+.organizedtodo-panel-icon {
+    icon-size: 16px;
+}
+
+/* ---------- header ---------- */
+.organizedtodo-header {
+    spacing: 6px;
+    padding: 4px 4px 8px 4px;
+}
+
+.organizedtodo-titles {
+    spacing: 0;
+}
+
+.organizedtodo-title {
+    font-size: 16px;
+    font-weight: bold;
+    color: #ffffff;
+}
+
+.organizedtodo-subtitle {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+/* ---------- buttons ---------- */
+.organizedtodo-icon-btn {
+    border-radius: 8px;
+    padding: 6px;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.organizedtodo-icon-btn:hover,
+.organizedtodo-icon-btn:focus {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: #ffffff;
+}
+
+.organizedtodo-icon {
+    icon-size: 16px;
+}
+
+.organizedtodo-pill {
+    border-radius: 999px;
+    padding: 4px 12px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.organizedtodo-pill:hover,
+.organizedtodo-pill:focus {
+    background-color: rgba(255, 255, 255, 0.16);
+}
+
+.organizedtodo-accent-btn {
+    font-weight: bold;
+    color: #14263a;
+    background-color: #78aeed;
+}
+
+.organizedtodo-accent-btn:hover,
+.organizedtodo-accent-btn:focus {
+    background-color: #99c1f1;
+}
+
+.organizedtodo-danger-btn {
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: bold;
+    color: #ff7b63;
+    background-color: rgba(255, 123, 99, 0.16);
+}
+
+.organizedtodo-danger-btn:hover,
+.organizedtodo-danger-btn:focus {
+    background-color: rgba(255, 123, 99, 0.28);
+}
+
+.organizedtodo-delete-btn:hover,
+.organizedtodo-delete-btn:focus {
+    color: #ff7b63;
+}
+
+/* ---------- content ---------- */
+.organizedtodo-scroll {
+    padding: 0 2px;
+}
+
+.organizedtodo-content {
+    spacing: 2px;
+}
+
+.organizedtodo-row {
+    border-radius: 10px;
+    padding: 2px 4px;
+    spacing: 2px;
+}
+
+.organizedtodo-row:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+}
+
+.organizedtodo-row-main {
+    border-radius: 8px;
+    padding: 8px 8px;
+}
+
+.organizedtodo-row-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #ffffff;
+}
+
+.organizedtodo-row-meta {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.organizedtodo-badge {
+    min-width: 18px;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: bold;
+    text-align: center;
+    color: #78aeed;
+    background-color: rgba(120, 174, 237, 0.2);
+}
+
+.organizedtodo-chevron {
+    icon-size: 14px;
+    margin-left: 8px;
+    color: rgba(255, 255, 255, 0.35);
+}
+
+/* ---------- todos ---------- */
+.organizedtodo-todo {
+    padding: 4px 6px;
+}
+
+.organizedtodo-check {
+    width: 18px;
+    height: 18px;
+    margin-right: 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    font-size: 11px;
+    color: #14263a;
+}
+
+.organizedtodo-check:hover,
+.organizedtodo-check:focus {
+    border-color: #78aeed;
+}
+
+.organizedtodo-check-on {
+    border-color: #78aeed;
+    background-color: #78aeed;
+}
+
+.organizedtodo-todo-label {
+    padding: 6px 4px;
+    font-size: 13px;
+    color: #ffffff;
+}
+
+.organizedtodo-done .organizedtodo-todo-label {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+.organizedtodo-focused {
+    background-color: rgba(120, 174, 237, 0.12);
+}
+
+.organizedtodo-focused .organizedtodo-focus-btn {
+    color: #78aeed;
+}
+
+.organizedtodo-drag-btn {
+    padding: 4px 8px;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.organizedtodo-drag-btn:hover {
+    color: #ffffff;
+}
+
+.organizedtodo-dragging {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.organizedtodo-drag-over {
+    box-shadow: inset 0 2px 0 #78aeed;
+}
+
+/* ---------- empty state ---------- */
+.organizedtodo-empty {
+    padding: 28px 0;
+    spacing: 4px;
+}
+
+.organizedtodo-empty-title {
+    font-size: 14px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.75);
+}
+
+.organizedtodo-empty-hint {
+    font-size: 11px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.4);
+}
+
+/* ---------- input ---------- */
+.organizedtodo-footer {
+    padding: 8px 4px 2px 4px;
+}
+
+.organizedtodo-input {
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.07);
+}
+
+.organizedtodo-input:focus {
+    border-color: #78aeed;
+    background-color: rgba(255, 255, 255, 0.1);
+}
