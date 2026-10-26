@@ -1,9 +1,13 @@
 UUID = organizedtodo@gabrielsmash.github.io
 INSTALL_DIR = $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
-FILES = extension.js manager.js utils.js stylesheet.css metadata.json LICENCE icons schemas
+FILES = extension.js client.js utils.js stylesheet.css metadata.json LICENCE icons schemas
 ZIP = $(UUID).shell-extension.zip
+DAEMON = organizedtodo-daemon
+BUS_NAME = io.github.gabrielsmash.OrganizedTodo
+BIN_DIR = $(HOME)/.local/bin
+DBUS_SERVICE_DIR = $(HOME)/.local/share/dbus-1/services
 
-.PHONY: schemas test pack install
+.PHONY: schemas test pack install daemon install-daemon
 
 schemas:
 	glib-compile-schemas schemas
@@ -22,3 +26,12 @@ pack: schemas
 install: schemas
 	mkdir -p $(INSTALL_DIR)
 	cp -r $(FILES) $(INSTALL_DIR)/
+
+daemon:
+	cargo build --release --manifest-path daemon/Cargo.toml
+
+# D-Bus starts the daemon on the first call to its bus name; Exec= must be an absolute path
+install-daemon: daemon
+	install -Dm755 daemon/target/release/$(DAEMON) $(BIN_DIR)/$(DAEMON)
+	mkdir -p $(DBUS_SERVICE_DIR)
+	sed 's|@BIN_DIR@|$(BIN_DIR)|' daemon/$(BUS_NAME).service.in > $(DBUS_SERVICE_DIR)/$(BUS_NAME).service

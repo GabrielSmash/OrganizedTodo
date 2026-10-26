@@ -1,4 +1,6 @@
-// Data layer. Workspace shape (stored as one JSON string in GSettings):
+// In-memory engine behind tests/helpers/fake-client.mjs. Mirrors the rules of
+// daemon/src/model.rs, which is what the extension really uses.
+// Workspace shape (stored as one JSON string in GSettings):
 // { folders: [ { id, name, completed, lists: [ { id, name, todos: [ { name, isDone, isFocused? } ] } ] } ] }
 const WORKSPACE = "workspace";
 

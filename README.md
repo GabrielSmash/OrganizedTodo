@@ -152,7 +152,8 @@ Se você resetar o dconf (por exemplo, `dconf reset -f /`), perde as tarefas. Fa
 ## Desenvolvimento
 
 ```sh
-npm test         # testes de dados + testes de interface (com fakes do GNOME)
+npm test         # testes de interface (com fakes do GNOME e do daemon)
+cargo test --manifest-path daemon/Cargo.toml   # regras e persistência do daemon
 make schemas     # recompila o schema GSettings depois de editá-lo
 make pack        # gera o zip
 ```
@@ -163,7 +164,8 @@ Estrutura:
 
 | Arquivo | Papel |
 |---|---|
-| `manager.js` | Dados e regras (projetos, listas, tarefas, conclusão). Sem interface. |
+| `daemon/` | Backend em Rust: regras (projetos, listas, tarefas, conclusão), persistência e serviço D-Bus. |
+| `client.js` | Cliente D-Bus do daemon; mantém a cópia dos dados para a interface. |
 | `extension.js` | As telas e a navegação. |
 | `stylesheet.css` | Visual. |
 | `icons/` | Ícone do painel. |
