@@ -19,6 +19,8 @@ async fn serve(store: StoreHandle) -> Result<(), Box<dyn Error>> {
     // Kept alive for the whole process: dropping the connection releases the bus name
     let _connection = zbus::connection::Builder::session()
         .name(BUS_NAME)
+        .allow_name_replacements(false)
+        .replace_existing_names(false)
         .serve_at(OBJECT_PATH, TodoService::new(store))
         .build()
         .await?;

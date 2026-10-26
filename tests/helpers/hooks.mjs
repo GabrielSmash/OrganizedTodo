@@ -1,6 +1,8 @@
 // Node loader hooks: map the GNOME Shell imports (gi://, resource://) used by
 // extension.js to the fakes in stubs.mjs, so the real extension code runs in Node.
 const STUBS = new URL("./stubs.mjs", import.meta.url).href;
+// extension.js talks to the daemon through client.js; the tests swap it for an in-memory fake
+const FAKE_CLIENT = new URL("./fake-client.mjs", import.meta.url).href;
 
 const SOURCES = {
     "gi://Clutter": `export default {
@@ -33,6 +35,7 @@ const SOURCES = {
 
 export async function resolve(spec, ctx, next) {
     if (spec in SOURCES) return { url: `stub:${spec}`, shortCircuit: true };
+    if (spec === "./client.js" && ctx.parentURL?.endsWith("/extension.js")) return { url: FAKE_CLIENT, shortCircuit: true };
     return next(spec, ctx);
 }
 export async function load(url, ctx, next) {

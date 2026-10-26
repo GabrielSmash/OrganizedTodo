@@ -9,7 +9,7 @@ import { Extension, gettext as _, } from "resource:///org/gnome/shell/extensions
 import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as DND from "resource:///org/gnome/shell/ui/dnd.js";
-import { TodoListManager, undoneCount, todoCount } from "./manager.js";
+import { TodoClient, undoneCount, todoCount } from "./client.js";
 import { isEmpty } from "./utils.js";
 
 const MENU_WIDTH = 440;
@@ -34,7 +34,7 @@ const inputHint = (screen) => ({
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
 export default class TodoListExtension extends Extension {
-    _manager;
+    _client;
     _button;
     _mainBox;
     _header;
@@ -51,9 +51,10 @@ export default class TodoListExtension extends Extension {
     _dragOverItem = null;
     /** Rebuild after DND finishes (avoid destroying actors mid-drop) */
     _pendingRerender = false;
+    _dragging = false;
 
     enable() {
-        this._manager = new TodoListManager(this);
+        this._client = new TodoClient(() => this._onWorkspaceChanged());
         this._view = { screen: SCREEN.FOLDERS };
         this._button = new PanelMenu.Button(0.0, this.metadata.name, false);
         this._button.add_child(new St.Icon({
@@ -64,11 +65,13 @@ export default class TodoListExtension extends Extension {
         this._buildMenu();
         this._render();
         this._bindShortcut();
+        this._client.connect().catch((e) => console.error(`organizedtodo: cannot reach the daemon: ${e}`));
     }
 
     disable() {
         this._clearDragOver();
         this._pendingRerender = false;
+        this._dragging = false;
         Main.wm.removeKeybinding("open-organizedtodo");
         this._button?.destroy();
         this._button = null;
@@ -80,7 +83,8 @@ export default class TodoListExtension extends Extension {
         this._toFocus = null;
         this._renaming = null;
         this._pendingDelete = null;
-        this._manager = null;
+        this._client?.destroy();
+        this._client = null;
     }
 
     // ---------------------------------------------------------------- menu
@@ -149,13 +153,13 @@ export default class TodoListExtension extends Extension {
         }
         const { screen, folderId, listId } = this._view;
         if (screen === SCREEN.FOLDERS) {
-            this._manager.addFolder(text);
+            this._send(this._client.addFolder(text));
         }
         else if (screen === SCREEN.LISTS) {
-            this._manager.addList(folderId, text);
+            this._send(this._client.addList(folderId, text));
         }
         else if (screen === SCREEN.TODOS) {
-            this._manager.addTodo(folderId, listId, text);
+            this._send(this._client.addTodo(folderId, listId, text));
         }
         else {
             return;
@@ -172,11 +176,25 @@ export default class TodoListExtension extends Extension {
         this._render();
     }
 
+    /** Daemon data changed (from here or elsewhere): redraw, unless a drag is running. */
+    _onWorkspaceChanged() {
+        if (this._dragging) {
+            this._pendingRerender = true;
+            return;
+        }
+        this._render();
+    }
+
+    /** Fire a daemon call; the redraw comes from the Changed signal. */
+    _send(promise) {
+        promise.catch((e) => console.error(`organizedtodo: daemon call failed: ${e}`));
+    }
+
     // -------------------------------------------------------------- render
 
     _render() {
         const folder = this._view.folderId
-            ? this._manager.getFolder(this._view.folderId)
+            ? this._client.getFolder(this._view.folderId)
             : null;
         const list = folder?.lists.find((l) => l.id === this._view.listId) ?? null;
         // Whatever the view points to may have been deleted (here or via dconf)
@@ -187,7 +205,7 @@ export default class TodoListExtension extends Extension {
         if (screen === SCREEN.LISTS && !folder) {
             screen = SCREEN.FOLDERS;
         }
-        if (screen === SCREEN.COMPLETED && isEmpty(this._manager.getFolders(true))) {
+        if (screen === SCREEN.COMPLETED && isEmpty(this._client.getFolders(true))) {
             screen = SCREEN.FOLDERS;
         }
         if (screen !== this._view.screen) {
@@ -220,8 +238,8 @@ export default class TodoListExtension extends Extension {
     }
 
     _renderFolders() {
-        const active = this._manager.getFolders(false);
-        const completed = this._manager.getFolders(true);
+        const active = this._client.getFolders(false);
+        const completed = this._client.getFolders(true);
         const actions = [];
         if (completed.length) {
             actions.push(this._pillButton(`${_("Concluídos")} · ${completed.length}`, () => this._navigate({ screen: SCREEN.COMPLETED })));
@@ -242,7 +260,7 @@ export default class TodoListExtension extends Extension {
     }
 
     _renderCompleted() {
-        const folders = this._manager.getFolders(true);
+        const folders = this._client.getFolders(true);
         this._buildHeader({
             title: _("Concluídos"),
             subtitle: plural(folders.length, _("projeto"), _("projetos")),
@@ -250,7 +268,7 @@ export default class TodoListExtension extends Extension {
         });
         for (const folder of folders) {
             const reactivate = this._pillButton(_("Reativar"), () => {
-                this._manager.setFolderCompleted(folder.id, false);
+                this._send(this._client.setFolderCompleted(folder.id, false));
                 this._render();
             });
             this._content.add_child(this._folderRow(folder, [reactivate]));
@@ -261,7 +279,7 @@ export default class TodoListExtension extends Extension {
         const actions = [];
         if (folder.completed) {
             actions.push(this._pillButton(_("Reativar"), () => {
-                this._manager.setFolderCompleted(folder.id, false);
+                this._send(this._client.setFolderCompleted(folder.id, false));
                 this._render();
             }, "organizedtodo-accent-btn"));
         }
@@ -285,8 +303,8 @@ export default class TodoListExtension extends Extension {
                 badge: undoneCount(list),
                 hasContent: todoCount(list) > 0,
                 onOpen: () => this._navigate({ screen: SCREEN.TODOS, folderId: folder.id, listId: list.id }),
-                onRename: (name) => this._manager.renameList(folder.id, list.id, name),
-                onDelete: () => this._manager.removeList(folder.id, list.id),
+                onRename: (name) => this._send(this._client.renameList(folder.id, list.id, name)),
+                onDelete: () => this._send(this._client.removeList(folder.id, list.id)),
             }));
         }
     }
@@ -419,8 +437,8 @@ export default class TodoListExtension extends Extension {
             hasContent: folder.lists.length > 0,
             extra,
             onOpen: () => this._navigate({ screen: SCREEN.LISTS, folderId: folder.id }),
-            onRename: (name) => this._manager.renameFolder(folder.id, name),
-            onDelete: () => this._manager.removeFolder(folder.id),
+            onRename: (name) => this._send(this._client.renameFolder(folder.id, name)),
+            onDelete: () => this._send(this._client.removeFolder(folder.id)),
         });
     }
 
@@ -500,7 +518,7 @@ export default class TodoListExtension extends Extension {
         // shift, the key stops matching and the edit is dropped instead of hitting the wrong todo
         const key = `todo:${listId}:${index}:${task.name}`;
         if (this._renaming?.key === key) {
-            row.add_child(this._renameEntry(task.name, (name) => this._manager.renameTodo(folderId, listId, index, name)));
+            row.add_child(this._renameEntry(task.name, (name) => this._send(this._client.renameTodo(folderId, listId, index, name))));
             return row;
         }
 
@@ -514,14 +532,20 @@ export default class TodoListExtension extends Extension {
                 y_align: Clutter.ActorAlign.CENTER,
             }),
         });
-        check.connect("clicked", () => {
-            const folderName = this._manager.getFolder(folderId)?.name ?? "";
-            if (this._manager.toggleTodo(folderId, listId, index)) {
+        check.connect("clicked", async () => {
+            const folderName = this._client.getFolder(folderId)?.name ?? "";
+            let completedProject;
+            try {
+                completedProject = await this._client.toggleTodo(folderId, listId, index);
+            }
+            catch (e) {
+                console.error(`organizedtodo: daemon call failed: ${e}`);
+                return;
+            }
+            // The extension may have been disabled while waiting for the daemon
+            if (completedProject && this._client) {
                 Main.notify(_("Projeto concluído"), folderName);
                 this._navigate({ screen: SCREEN.FOLDERS });
-            }
-            else {
-                this._render();
             }
         });
 
@@ -544,11 +568,11 @@ export default class TodoListExtension extends Extension {
             this._render();
         });
         const focus = this._iconButton("find-location-symbolic", "organizedtodo-focus-btn", () => {
-            this._manager.setTodoFocus(folderId, listId, index, !isFocused);
+            this._send(this._client.setTodoFocus(folderId, listId, index, !isFocused));
             this._render();
         });
         const remove = this._iconButton("edit-delete-symbolic", "organizedtodo-delete-btn", () => {
-            this._manager.removeTodo(folderId, listId, index);
+            this._send(this._client.removeTodo(folderId, listId, index));
             this._render();
         });
         const dragHandle = new St.Button({
@@ -599,22 +623,20 @@ export default class TodoListExtension extends Extension {
                 }
                 const height = row.height ?? 0;
                 const placeAfter = height > 0 ? y > height / 2 : false;
-                // Persist only; rebuild on drag-end so source actors stay alive during DND
-                const reordered = this._reorderTodo(folderId, listId, source.index, index, placeAfter);
-                if (reordered) {
-                    this._pendingRerender = true;
-                }
-                return reordered;
+                // Persist only; the daemon's Changed redraws once the drag has ended
+                return this._reorderTodo(folderId, listId, source.index, index, placeAfter);
             },
         };
         row._delegate = delegate;
         dragHandle._delegate = delegate;
         const draggable = DND.makeDraggable(dragHandle, { dragActorOpacity: 200 });
         draggable.connect("drag-begin", () => {
+            this._dragging = true;
             row.add_style_class_name("organizedtodo-dragging");
             return true;
         });
         draggable.connect("drag-end", () => {
+            this._dragging = false;
             row.remove_style_class_name("organizedtodo-dragging");
             this._clearDragOver();
             if (this._pendingRerender) {
@@ -651,6 +673,7 @@ export default class TodoListExtension extends Extension {
         if (fromIndex === toIndex) {
             return false;
         }
-        return this._manager.reorderTodo(folderId, listId, fromIndex, toIndex);
+        this._send(this._client.reorderTodo(folderId, listId, fromIndex, toIndex));
+        return true;
     }
 }
