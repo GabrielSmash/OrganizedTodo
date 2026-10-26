@@ -5,6 +5,6 @@
   "settings-schema": "org.gnome.shell.extensions.organizedtodo",
   "shell-version": ["45", "46", "47", "48", "49", "50"],
   "url": "https://github.com/GabrielSmash/OrganizedTodo",
-  "version": 1,
-  "version-name": "1.0.0"
+  "version": 2,
+  "version-name": "2.0.0"
 }
