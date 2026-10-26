@@ -22,12 +22,16 @@ impl TodoService {
         &self,
         emitter: &SignalEmitter<'_>,
         change: impl FnOnce(&mut Workspace) -> R + Send + 'static,
-    ) -> R {
-        let result = self.store.update(change).await;
+    ) -> fdo::Result<R> {
+        let result = self
+            .store
+            .update(change)
+            .await
+            .map_err(fdo::Error::Failed)?;
         if let Err(error) = Self::changed(emitter).await {
             eprintln!("organizedtodo: failed to emit Changed: {error}");
         }
-        result
+        Ok(result)
     }
 }
 
@@ -35,10 +39,12 @@ impl TodoService {
 impl TodoService {
     /// The whole workspace as JSON, in the same format stored in GSettings.
     async fn get_workspace(&self) -> fdo::Result<String> {
-        self.store
+        let json = self
+            .store
             .read(|workspace| serde_json::to_string(workspace))
             .await
-            .map_err(|error| fdo::Error::Failed(error.to_string()))
+            .map_err(fdo::Error::Failed)?;
+        json.map_err(|error| fdo::Error::Failed(error.to_string()))
     }
 
     // D-Bus has no optional values: an empty id means nothing was created.
@@ -46,10 +52,10 @@ impl TodoService {
         &self,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
         name: String,
-    ) -> String {
+    ) -> fdo::Result<String> {
         self.update(&emitter, move |workspace| workspace.add_folder(&name))
             .await
-            .unwrap_or_default()
+            .map(Option::unwrap_or_default)
     }
 
     async fn rename_folder(
@@ -57,7 +63,7 @@ impl TodoService {
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
         folder_id: String,
         name: String,
-    ) -> bool {
+    ) -> fdo::Result<bool> {
         self.update(&emitter, move |workspace| {
             workspace.rename_folder(&folder_id, &name)
         })
@@ -68,7 +74,7 @@ impl TodoService {
         &self,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
         folder_id: String,
-    ) -> bool {
+    ) -> fdo::Result<bool> {
         self.update(&emitter, move |workspace| {
             workspace.remove_folder(&folder_id)
         })
@@ -80,7 +86,7 @@ impl TodoService {
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
         folder_id: String,
         completed: bool,
-    ) -> bool {
+    ) -> fdo::Result<bool> {
         self.update(&emitter, move |workspace| {
             workspace.set_folder_completed(&folder_id, completed)
         })
@@ -92,12 +98,12 @@ impl TodoService {
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
         folder_id: String,
         name: String,
-    ) -> String {
+    ) -> fdo::Result<String> {
         self.update(&emitter, move |workspace| {
             workspace.add_list(&folder_id, &name)
         })
         .await
-        .unwrap_or_default()
+        .map(Option::unwrap_or_default)
     }
 
     async fn rename_list(
@@ -106,7 +112,7 @@ impl TodoService {
         folder_id: String,
         list_id: String,
         name: String,
-    ) -> bool {
+    ) -> fdo::Result<bool> {
         self.update(&emitter, move |workspace| {
             workspace.rename_list(&folder_id, &list_id, &name)
         })
@@ -118,7 +124,7 @@ impl TodoService {
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
         folder_id: String,
         list_id: String,
-    ) -> bool {
+    ) -> fdo::Result<bool> {
         self.update(&emitter, move |workspace| {
             workspace.remove_list(&folder_id, &list_id)
         })
@@ -131,7 +137,7 @@ impl TodoService {
         folder_id: String,
         list_id: String,
         name: String,
-    ) -> bool {
+    ) -> fdo::Result<bool> {
         self.update(&emitter, move |workspace| {
             workspace.add_todo(&folder_id, &list_id, &name)
         })
@@ -144,7 +150,7 @@ impl TodoService {
         folder_id: String,
         list_id: String,
         index: u32,
-    ) -> bool {
+    ) -> fdo::Result<bool> {
         self.update(&emitter, move |workspace| {
             workspace.remove_todo(&folder_id, &list_id, index as usize)
         })
@@ -158,7 +164,7 @@ impl TodoService {
         list_id: String,
         index: u32,
         name: String,
-    ) -> bool {
+    ) -> fdo::Result<bool> {
         self.update(&emitter, move |workspace| {
             workspace.rename_todo(&folder_id, &list_id, index as usize, &name)
         })
@@ -172,7 +178,7 @@ impl TodoService {
         folder_id: String,
         list_id: String,
         index: u32,
-    ) -> bool {
+    ) -> fdo::Result<bool> {
         self.update(&emitter, move |workspace| {
             workspace.toggle_todo(&folder_id, &list_id, index as usize)
         })
@@ -186,7 +192,7 @@ impl TodoService {
         list_id: String,
         index: u32,
         focused: bool,
-    ) -> bool {
+    ) -> fdo::Result<bool> {
         self.update(&emitter, move |workspace| {
             workspace.set_todo_focus(&folder_id, &list_id, index as usize, focused)
         })
@@ -200,7 +206,7 @@ impl TodoService {
         list_id: String,
         from: u32,
         to: u32,
-    ) -> bool {
+    ) -> fdo::Result<bool> {
         self.update(&emitter, move |workspace| {
             workspace.reorder_todo(&folder_id, &list_id, from as usize, to as usize)
         })

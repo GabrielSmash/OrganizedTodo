@@ -9,6 +9,8 @@ export class TodoClient {
     _manager;
     _onChange;
     _workspace = { folders: [] };
+    // Tests set this to simulate a daemon that cannot load the data
+    _error = null;
 
     constructor(onChange) {
         this._onChange = onChange;
@@ -22,6 +24,15 @@ export class TodoClient {
 
     destroy() {
         this._onChange = null;
+    }
+
+    get error() {
+        return this._error;
+    }
+
+    async refresh() {
+        this._error = null;
+        this._refresh();
     }
 
     // Plays the role of the daemon's Changed signal
