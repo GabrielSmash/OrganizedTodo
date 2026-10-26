@@ -35,21 +35,30 @@ impl Store {
         Ok(Self { settings })
     }
 
-    pub fn load(&self) -> Workspace {
+    /// A corrupted value is an error, not an empty workspace: otherwise the
+    /// next save would overwrite the user's data with nothing.
+    pub fn load(&self) -> Result<Workspace, String> {
         let raw = self.settings.string(WORKSPACE_KEY);
         if raw.is_empty() {
-            return Workspace::default();
+            return Ok(Workspace::default());
         }
-        serde_json::from_str(&raw).unwrap_or_else(|error| {
-            eprintln!("organizedtodo: invalid workspace JSON: {error}");
-            Workspace::default()
-        })
+        serde_json::from_str(&raw).map_err(|error| format!("invalid workspace JSON: {error}"))
     }
 
     pub fn save(&self, workspace: &Workspace) -> Result<(), Box<dyn Error>> {
         let raw = serde_json::to_string(workspace)?;
         self.settings.set_string(WORKSPACE_KEY, &raw)?;
         Ok(())
+    }
+
+    #[cfg(test)]
+    pub fn raw(&self) -> String {
+        self.settings.string(WORKSPACE_KEY).to_string()
+    }
+
+    #[cfg(test)]
+    pub fn set_raw(&self, raw: &str) {
+        self.settings.set_string(WORKSPACE_KEY, raw).unwrap();
     }
 }
 
@@ -65,7 +74,7 @@ mod tests {
 
     #[test]
     fn empty_key_loads_empty_workspace() {
-        assert!(memory_store().load().folders.is_empty());
+        assert!(memory_store().load().unwrap().folders.is_empty());
     }
 
     #[test]
@@ -74,16 +83,13 @@ mod tests {
         let mut workspace = Workspace::default();
         let id = workspace.add_folder("Work").unwrap();
         store.save(&workspace).unwrap();
-        assert_eq!(store.load().folder(&id).unwrap().name, "Work");
+        assert_eq!(store.load().unwrap().folder(&id).unwrap().name, "Work");
     }
 
     #[test]
-    fn invalid_json_loads_empty_workspace() {
+    fn invalid_json_is_an_error() {
         let store = memory_store();
-        store
-            .settings
-            .set_string(WORKSPACE_KEY, "{not json")
-            .unwrap();
-        assert!(store.load().folders.is_empty());
+        store.set_raw("{not json");
+        assert!(store.load().is_err());
     }
 }

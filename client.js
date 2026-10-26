@@ -114,21 +114,34 @@ export class TodoClient {
     _proxy = null;
     _changedId = null;
     _workspace = { folders: [] };
+    _error = null;
     _onChange;
 
     constructor(onChange) {
         this._onChange = onChange;
     }
 
+    /** Why the last load failed, or null. While set, the UI shows it instead of the data. */
+    get error() {
+        return this._error;
+    }
+
     async connect() {
-        const proxy = await TodoProxy.newAsync(Gio.DBus.session, BUS_NAME, OBJECT_PATH);
+        let proxy;
+        try {
+            proxy = await TodoProxy.newAsync(Gio.DBus.session, BUS_NAME, OBJECT_PATH);
+        }
+        catch (e) {
+            this._fail(e);
+            return;
+        }
         // destroy() may have run while the proxy was being created
         if (!this._onChange) {
             return;
         }
         this._proxy = proxy;
-        this._changedId = this._proxy.connectSignal("Changed", () => this._refresh());
-        await this._refresh();
+        this._changedId = this._proxy.connectSignal("Changed", () => this.refresh());
+        await this.refresh();
     }
 
     destroy() {
@@ -140,21 +153,35 @@ export class TodoClient {
         this._onChange = null;
     }
 
-    async _refresh() {
+    /** Fetch the workspace again; never rejects, failures land in `error`. */
+    async refresh() {
+        if (!this._proxy) {
+            return;
+        }
         let data;
         try {
             const [raw] = await this._proxy.GetWorkspaceAsync();
             data = JSON.parse(raw);
         }
         catch (e) {
-            console.error(`organizedtodo: failed to load workspace: ${e}`);
+            this._fail(e);
             return;
         }
         // destroy() may have run while the call was in flight
         if (!this._proxy) {
             return;
         }
+        this._error = null;
         this._workspace = Array.isArray(data?.folders) ? data : { folders: [] };
+        this._onChange();
+    }
+
+    _fail(e) {
+        console.error(`organizedtodo: failed to load workspace: ${e}`);
+        if (!this._onChange) {
+            return;
+        }
+        this._error = String(e?.message ?? e);
         this._onChange();
     }
 

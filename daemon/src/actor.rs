@@ -51,21 +51,21 @@ impl StoreHandle {
     pub async fn read<R: Send + 'static>(
         &self,
         query: impl FnOnce(&Workspace) -> R + Send + 'static,
-    ) -> R {
-        self.run(move |store| query(&store.load())).await
+    ) -> Result<R, String> {
+        self.run(move |store| store.load().map(|workspace| query(&workspace)))
+            .await
     }
 
+    /// Nothing is saved when the stored data cannot be loaded.
     pub async fn update<R: Send + 'static>(
         &self,
         change: impl FnOnce(&mut Workspace) -> R + Send + 'static,
-    ) -> R {
+    ) -> Result<R, String> {
         self.run(move |store| {
-            let mut workspace = store.load();
+            let mut workspace = store.load()?;
             let result = change(&mut workspace);
-            if let Err(error) = store.save(&workspace) {
-                eprintln!("organizedtodo: failed to save workspace: {error}");
-            }
-            result
+            store.save(&workspace).map_err(|error| error.to_string())?;
+            Ok(result)
         })
         .await
     }
@@ -90,11 +90,24 @@ mod tests {
         let handle = memory_handle();
         let id =
             futures_lite::future::block_on(handle.update(|workspace| workspace.add_folder("Work")))
+                .unwrap()
                 .unwrap();
         let name = futures_lite::future::block_on(
             handle.read(move |workspace| workspace.folder(&id).map(|folder| folder.name.clone())),
-        );
+        )
+        .unwrap();
         assert_eq!(name.as_deref(), Some("Work"));
+    }
+
+    #[test]
+    fn update_never_overwrites_corrupted_data() {
+        let handle = memory_handle();
+        futures_lite::future::block_on(handle.run(|store| store.set_raw("{not json")));
+        let result =
+            futures_lite::future::block_on(handle.update(|workspace| workspace.add_folder("Work")));
+        assert!(result.is_err());
+        let raw = futures_lite::future::block_on(handle.run(|store| store.raw()));
+        assert_eq!(raw, "{not json");
     }
 
     #[test]

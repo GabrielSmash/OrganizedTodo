@@ -130,6 +130,10 @@ export default class TodoListExtension extends Extension {
         this._button.menu.box.add_child(this._mainBox);
         // Half-finished interactions should not survive closing the menu
         this._button.menu.connect("open-state-changed", (_menu, isOpen) => {
+            // A failed load gets another chance every time the menu opens
+            if (isOpen && this._client?.error) {
+                this._send(this._client.refresh());
+            }
             if (!isOpen && (this._renaming || this._pendingDelete)) {
                 this._renaming = null;
                 this._pendingDelete = null;
@@ -214,6 +218,10 @@ export default class TodoListExtension extends Extension {
 
         this._header.destroy_all_children();
         this._content.destroy_all_children();
+        if (this._client.error) {
+            this._renderError();
+            return;
+        }
         switch (screen) {
             case SCREEN.FOLDERS:
                 this._renderFolders();
@@ -307,6 +315,13 @@ export default class TodoListExtension extends Extension {
                 onDelete: () => this._send(this._client.removeList(folder.id, list.id)),
             }));
         }
+    }
+
+    /** The daemon is missing or the stored data is unreadable: nothing can be shown or changed. */
+    _renderError() {
+        this._buildHeader({ title: _("Projetos") });
+        this._emptyState(_("Não foi possível carregar as tarefas"), _("Veja os detalhes com: journalctl --user -g organizedtodo"));
+        this._footer.visible = false;
     }
 
     _renderTodos(folder, list) {

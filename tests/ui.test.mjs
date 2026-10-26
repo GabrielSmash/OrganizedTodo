@@ -276,6 +276,21 @@ await t("view pointing to a deleted project falls back to Projetos", async () =>
     assert.equal(ext._view.screen, "folders");
 });
 
+await t("load failure shows a notice without the input; reopening the menu retries", async () => {
+    ext._client._error = "daemon unreachable";
+    ext._render();
+    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "Não foi possível carregar as tarefas");
+    assert.equal(ext._footer.visible, false);
+    assert.equal(rows().length, 0);
+    ext._button.menu.emit("open-state-changed", true);
+    await flush();
+    assert.equal(ext._client.error, null);
+    assert.equal(headerTitle(), "Projetos");
+    // the previous test deleted the last project: back to the normal empty state
+    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "Nenhum projeto ainda");
+    assert.equal(ext._footer.visible, true);
+});
+
 await t("disable cleans up", async () => {
     ext.disable();
     assert.equal(globalThis.__unbound, "open-organizedtodo");
