@@ -48,10 +48,6 @@ impl List {
     pub fn undone_count(&self) -> usize {
         self.todos.iter().filter(|todo| !todo.is_done).count()
     }
-
-    pub fn todo_count(&self) -> usize {
-        self.todos.len()
-    }
 }
 
 impl Folder {
@@ -59,10 +55,9 @@ impl Folder {
         self.lists.iter().map(List::undone_count).sum()
     }
 
-    pub fn todo_count(&self) -> usize {
-        self.lists.iter().map(List::todo_count).sum()
-    }
-
+    // The daemon only changes or serializes the workspace; read-only lookups
+    // exist for the tests to check the results
+    #[cfg(test)]
     pub fn list(&self, list_id: &str) -> Option<&List> {
         self.lists.iter().find(|list| list.id == list_id)
     }
@@ -73,12 +68,7 @@ impl Folder {
 }
 
 impl Workspace {
-    pub fn folders_by_status(&self, completed: bool) -> impl Iterator<Item = &Folder> {
-        self.folders
-            .iter()
-            .filter(move |folder| folder.completed == completed)
-    }
-
+    #[cfg(test)]
     pub fn folder(&self, folder_id: &str) -> Option<&Folder> {
         self.folders.iter().find(|folder| folder.id == folder_id)
     }
@@ -89,19 +79,13 @@ impl Workspace {
             .find(|folder| folder.id == folder_id)
     }
 
+    #[cfg(test)]
     pub fn list(&self, folder_id: &str, list_id: &str) -> Option<&List> {
         self.folder(folder_id)?.list(list_id)
     }
 
     pub fn list_mut(&mut self, folder_id: &str, list_id: &str) -> Option<&mut List> {
         self.folder_mut(folder_id)?.list_mut(list_id)
-    }
-
-    /// Pending todos across active (non-completed) projects.
-    pub fn total_undone(&self) -> usize {
-        self.folders_by_status(false)
-            .map(Folder::undone_count)
-            .sum()
     }
 
     pub fn add_folder(&mut self, name: &str) -> Option<String> {
@@ -323,17 +307,11 @@ mod tests {
     }
 
     #[test]
-    fn counts_pending_and_total_todos() {
+    fn counts_pending_todos() {
         let workspace = sample();
         let folder = workspace.folder("f1").unwrap();
         assert_eq!(folder.undone_count(), 2);
-        assert_eq!(folder.todo_count(), 3);
         assert_eq!(workspace.list("f1", "l1").unwrap().undone_count(), 1);
-    }
-
-    #[test]
-    fn total_undone_ignores_completed_folders() {
-        assert_eq!(sample().total_undone(), 2);
     }
 
     #[test]
@@ -341,7 +319,6 @@ mod tests {
         let workspace = sample();
         assert!(workspace.folder("nope").is_none());
         assert!(workspace.list("f1", "nope").is_none());
-        assert_eq!(workspace.folders_by_status(true).count(), 1);
     }
 
     #[test]
