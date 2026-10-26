@@ -16,14 +16,16 @@ test:
 	npm test
 
 # Zip ready to share: gnome-extensions install --force $(ZIP)
+# The zip holds only the extension; the daemon still has to be installed with `make install-daemon`.
 # Built with zip(1), not `gnome-extensions pack`: pack flattens --extra-source paths,
 # which would drop the compiled schema in the zip root instead of schemas/.
 pack: schemas
 	rm -f $(ZIP)
 	zip -r $(ZIP) $(FILES)
 
-# Copy into the GNOME extensions folder (not needed if this repo already lives there)
-install: schemas
+# Copy into the GNOME extensions folder (not needed if this repo already lives there;
+# then run only `make install-daemon`)
+install: schemas install-daemon
 	mkdir -p $(INSTALL_DIR)
 	cp -r $(FILES) $(INSTALL_DIR)/
 
