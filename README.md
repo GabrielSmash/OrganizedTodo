@@ -20,6 +20,8 @@ Derivado do [Todoit](https://github.com/wassimbj/todoit-gnome), de wassimbj (MIT
 - GNOME Shell **45 a 50**. Testado apenas no **50**; nas outras versões pode haver diferenças.
 - Para instalar a partir do código-fonte: `git`, `make` e `glib-compile-schemas`
   (Ubuntu/Debian: pacote `libglib2.0-bin`; Fedora: `glib2-devel`).
+- Para compilar o daemon (o backend em Rust): **Rust 1.92 ou mais novo** (`cargo`, via [rustup](https://rustup.rs)),
+  `pkg-config` e os headers da GLib (Ubuntu/Debian: `pkg-config libglib2.0-dev`; Fedora: `pkgconf glib2-devel`).
 - Para gerar o zip (`make pack`): `zip`.
 
 ## Instalação
@@ -32,8 +34,18 @@ cd OrganizedTodo
 make install
 ```
 
-O `make install` compila o schema e copia os arquivos para
-`~/.local/share/gnome-shell/extensions/organizedtodo@gabrielsmash.github.io/`.
+O `make install` faz duas coisas:
+
+1. Compila o schema e copia a extensão para
+   `~/.local/share/gnome-shell/extensions/organizedtodo@gabrielsmash.github.io/`.
+2. Compila o **daemon** e o instala (`make install-daemon`):
+   - o binário em `~/.local/bin/organizedtodo-daemon`;
+   - o arquivo de ativação em `~/.local/share/dbus-1/services/io.github.gabrielsmash.OrganizedTodo.service`.
+
+Você não precisa iniciar o daemon: o D-Bus o inicia sozinho na primeira vez que a extensão o chama.
+
+Se o repositório já estiver dentro da pasta de extensões (clonado direto em
+`~/.local/share/gnome-shell/extensions/organizedtodo@gabrielsmash.github.io`), rode só `make install-daemon`.
 
 ### A partir de um zip
 
@@ -44,6 +56,9 @@ gnome-extensions install --force organizedtodo@gabrielsmash.github.io.shell-exte
 ```
 
 Para gerar esse zip a partir do código: `make pack`.
+
+O zip contém **só a extensão**. O daemon precisa ser instalado a partir do código-fonte (`make install-daemon`);
+sem ele, o menu abre vazio e o erro aparece no log (`journalctl --user -g organizedtodo`).
 
 ### Ativar
 
@@ -62,11 +77,16 @@ Se estiver com o **Todoit original** ativo, desative-o: os dois respondem a `Alt
 
 Dentro da pasta do repositório: `git pull && make install`, e depois saia e entre na sessão (o GNOME guarda o código das extensões em cache).
 
+Se o daemon já estiver rodando, ele continua com a versão antiga até ser encerrado. Sair da sessão já resolve;
+para trocar na hora: `pkill -x organizedtodo-d` (o D-Bus inicia a versão nova na próxima chamada).
+
 ### Desinstalar
 
 ```sh
 gnome-extensions disable organizedtodo@gabrielsmash.github.io
 rm -rf ~/.local/share/gnome-shell/extensions/organizedtodo@gabrielsmash.github.io
+pkill -x organizedtodo-d
+rm -f ~/.local/bin/organizedtodo-daemon ~/.local/share/dbus-1/services/io.github.gabrielsmash.OrganizedTodo.service
 dconf reset -f /org/gnome/shell/extensions/organizedtodo/   # apaga também seus dados
 ```
 
@@ -134,7 +154,8 @@ Vale na hora. Para voltar ao padrão: `dconf reset /org/gnome/shell/extensions/o
 
 ## Onde ficam os dados
 
-Tudo é guardado no **dconf**, como um único texto JSON. Não há sincronização entre máquinas.
+Tudo é guardado no **dconf**, como um único texto JSON. Quem lê e grava é o daemon; a extensão só conversa com ele.
+Não há sincronização entre máquinas.
 
 ```sh
 # ver
@@ -155,8 +176,31 @@ Se você resetar o dconf (por exemplo, `dconf reset -f /`), perde as tarefas. Fa
 npm test         # testes de interface (com fakes do GNOME e do daemon)
 cargo test --manifest-path daemon/Cargo.toml   # regras e persistência do daemon
 make schemas     # recompila o schema GSettings depois de editá-lo
-make pack        # gera o zip
+make install-daemon   # recompila e reinstala o daemon
+make pack        # gera o zip (só a extensão)
 ```
+
+Como as peças se conectam:
+
+```text
+extension.js (interface, roda dentro do gnome-shell)
+   └─ client.js ── D-Bus de sessão ──► organizedtodo-daemon (Rust)
+                   io.github.gabrielsmash.OrganizedTodo     └─ dconf (GSettings)
+```
+
+A extensão nunca bloqueia o shell: toda chamada ao daemon é assíncrona, e a interface se redesenha quando o
+daemon emite o sinal `Changed`.
+
+Para testar o daemon sem tocar nos dados reais, rode-o com o backend em memória (pare antes o instalado, porque só
+uma instância pode ter o nome no barramento):
+
+```sh
+pkill -x organizedtodo-d
+GSETTINGS_BACKEND=memory daemon/target/debug/organizedtodo-daemon
+gdbus introspect --session --dest io.github.gabrielsmash.OrganizedTodo --object-path /io/github/gabrielsmash/OrganizedTodo
+```
+
+Logs da extensão e do daemon: `journalctl --user -g organizedtodo`.
 
 Os testes de interface rodam o `extension.js` real no Node, com pequenos fakes de `St`, `Clutter` e dos módulos do shell (`tests/helpers`). Eles verificam **lógica e navegação, não a aparência**; confira o visual numa sessão real.
 
@@ -176,6 +220,7 @@ Estrutura:
 
 - A interface está só em português; não há arquivos de tradução.
 - Testado apenas no GNOME Shell 50.
+- O zip (`make pack`) não inclui o daemon; é preciso compilá-lo a partir do código-fonte.
 - Sem sincronização, sem lembretes e sem datas nas tarefas.
 
 ## Licença e créditos
