@@ -9,7 +9,9 @@ const SOURCES = {
         ActorAlign: { FILL: 0, CENTER: 1, START: 2, END: 3 },
         EVENT_STOP: true, EVENT_PROPAGATE: false, KEY_Escape: 65307,
         Clone: class { constructor(o) { Object.assign(this, o); } } };`,
-    "gi://Gio": `export default { icon_new_for_string: (p) => ({ path: p }) };`,
+    "gi://Gio": `export default {
+        icon_new_for_string: (p) => ({ path: p }),
+        AppInfo: { launch_default_for_uri: (uri) => { (globalThis.__opened ??= []).push(uri); } } };`,
     "gi://GLib": `export default { markup_escape_text: (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;') };`,
     "gi://Meta": `export default { KeyBindingFlags: { NONE: 0 } };`,
     "gi://Shell": `export default { ActionMode: { ALL: 1 } };`,

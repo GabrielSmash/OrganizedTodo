@@ -1,7 +1,6 @@
 "use strict";
 import Clutter from "gi://Clutter";
 import Gio from "gi://Gio";
-import GLib from "gi://GLib";
 import Meta from "gi://Meta";
 import Shell from "gi://Shell";
 import St from "gi://St";
@@ -10,6 +9,7 @@ import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as DND from "resource:///org/gnome/shell/ui/dnd.js";
 import { TodoClient, undoneCount, todoCount } from "./client.js";
+import { markdownToMarkup, markdownToPlain, firstLink } from "./markdown.js";
 import { isEmpty } from "./utils.js";
 
 const MENU_WIDTH = 440;
@@ -351,9 +351,9 @@ export default class TodoListExtension extends Extension {
             x_expand: true,
             y_align: Clutter.ActorAlign.CENTER,
         });
-        titles.add_child(new St.Label({ text: title, style_class: "organizedtodo-title" }));
+        titles.add_child(this._markdownLabel(title, { style_class: "organizedtodo-title" }));
         if (subtitle) {
-            titles.add_child(new St.Label({ text: subtitle, style_class: "organizedtodo-subtitle" }));
+            titles.add_child(this._markdownLabel(subtitle, { style_class: "organizedtodo-subtitle" }));
         }
         this._header.add_child(titles);
         for (const action of actions) {
@@ -370,6 +370,38 @@ export default class TodoListExtension extends Extension {
         box.add_child(new St.Label({ text: title, style_class: "organizedtodo-empty-title" }));
         box.add_child(new St.Label({ text: hint, style_class: "organizedtodo-empty-hint" }));
         this._content.add_child(box);
+    }
+
+    /**
+     * Label that draws `text` as markdown; its `text` property keeps the string as typed.
+     * When the text has a link, clicking the label opens it (and nothing behind it reacts).
+     */
+    _markdownLabel(text, props, { struck = false } = {}) {
+        const label = new St.Label({ text, ...props });
+        const markup = markdownToMarkup(text);
+        label.clutterText.set_markup(struck ? `<s>${markup}</s>` : markup);
+        const url = firstLink(text);
+        if (url) {
+            label.reactive = true;
+            // Swallow the press too, or a parent button (the row) would still react
+            label.connect("button-press-event", () => Clutter.EVENT_STOP);
+            label.connect("button-release-event", () => {
+                this._openLink(url);
+                return Clutter.EVENT_STOP;
+            });
+        }
+        return label;
+    }
+
+    _openLink(url) {
+        try {
+            Gio.AppInfo.launch_default_for_uri(url, global.create_app_launch_context(0, -1));
+        }
+        catch (e) {
+            console.error(`organizedtodo: cannot open ${url}: ${e}`);
+            return;
+        }
+        this._button.menu.close();
     }
 
     _iconButton(iconName, extraClass, onClick) {
@@ -476,7 +508,7 @@ export default class TodoListExtension extends Extension {
             row.add_child(info);
             return row;
         }
-        info.add_child(new St.Label({ text: title, style_class: "organizedtodo-row-title" }));
+        info.add_child(this._markdownLabel(title, { style_class: "organizedtodo-row-title" }));
         info.add_child(new St.Label({ text: meta, style_class: "organizedtodo-row-meta" }));
         const inner = new St.BoxLayout({ x_expand: true });
         inner.add_child(info);
@@ -559,23 +591,20 @@ export default class TodoListExtension extends Extension {
             }
             // The extension may have been disabled while waiting for the daemon
             if (completedProject && this._client) {
-                Main.notify(_("Projeto concluído"), folderName);
+                // Notifications take no markup: show the name without the markdown markers
+                Main.notify(_("Projeto concluído"), markdownToPlain(folderName));
                 this._navigate({ screen: SCREEN.FOLDERS });
             }
         });
 
-        const label = new St.Label({
-            text: task.name,
+        const label = this._markdownLabel(task.name, {
             style_class: "organizedtodo-todo-label",
             x_expand: true,
             x_align: Clutter.ActorAlign.START,
             y_align: Clutter.ActorAlign.CENTER,
-        });
+        }, { struck: task.isDone });
         label.clutterText.line_wrap = true;
         label.clutterText.set_ellipsize(0);
-        if (task.isDone) {
-            label.clutterText.set_markup(`<s>${GLib.markup_escape_text(task.name, -1)}</s>`);
-        }
 
         const edit = this._iconButton("document-edit-symbolic", "", () => {
             this._renaming = { key };

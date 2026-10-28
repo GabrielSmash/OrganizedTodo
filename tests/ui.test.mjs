@@ -18,6 +18,7 @@ const store = {
 };
 globalThis.__settings = { get_string: (k) => store[k], set_string: (k, v) => { store[k] = v; } };
 globalThis.__notes = [];
+globalThis.global = { create_app_launch_context: () => null };
 
 const ext = new Ext();
 ext.enable();
@@ -223,7 +224,7 @@ await t("edit todo: Enter saves and keeps state; Esc and blank cancel; shifted i
     await commit(entry);
     assert.deepEqual(todoLabels(), ["alpha", "beta <edited> & more"]);
     assert.ok(hasClass(rows()[1], "organizedtodo-done")); // still done
-    assert.equal(findAll(rows()[1], (x) => hasClass(x, "organizedtodo-todo-label"))[0].clutterText.markup, "<s>beta &lt;edited> &amp; more</s>");
+    assert.equal(findAll(rows()[1], (x) => hasClass(x, "organizedtodo-todo-label"))[0].clutterText.markup, "<s>beta &lt;edited&gt; &amp; more</s>");
     // Esc cancels and is swallowed
     await click(btnByIcon(rows()[0], "document-edit-symbolic")[0]);
     entry = entries()[0];
@@ -289,6 +290,38 @@ await t("load failure shows a notice without the input; reopening the menu retri
     // the previous test deleted the last project: back to the normal empty state
     assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "Nenhum projeto ainda");
     assert.equal(ext._footer.visible, true);
+});
+
+await t("names are drawn as markdown; the stored text stays as typed", async () => {
+    await type("**Big** `x`");
+    const title = findAll(ext._content, (x) => hasClass(x, "organizedtodo-row-title"))[0];
+    assert.equal(title.text, "**Big** `x`");
+    assert.match(title.clutterText.markup, /^<b>Big<\/b> <span font_family="monospace"/);
+    await click(mainBtn(rows()[0]));
+    assert.match(findAll(ext._header, (x) => hasClass(x, "organizedtodo-title"))[0].clutterText.markup, /<b>Big<\/b>/);
+    await type("L");
+    await click(mainBtn(rows()[0]));
+    await type("> nota");
+    const label = findAll(ext._content, (x) => hasClass(x, "organizedtodo-todo-label"))[0];
+    assert.equal(label.clutterText.markup, `<span style="italic" fgalpha="70%">▎ nota</span>`);
+    await click(checks()[0]); // last pending todo: the project completes
+    assert.deepEqual(globalThis.__notes.at(-1), ["Projeto concluído", "Big x"]); // no markers in notifications
+});
+
+await t("clicking a name with a link opens it and closes the menu; the row does not react", async () => {
+    let closed = 0;
+    ext._button.menu.close = () => closed++;
+    await type("ler [docs](https://gnome.org) e [x](file:///etc)");
+    const row = rows().at(-1);
+    const label = findAll(row, (x) => hasClass(x, "organizedtodo-row-title"))[0];
+    assert.equal(label.reactive, true);
+    assert.deepEqual(label.emit("button-press-event"), [true]); // EVENT_STOP: the row button never sees it
+    assert.deepEqual(label.emit("button-release-event"), [true]);
+    assert.deepEqual(globalThis.__opened, ["https://gnome.org"]);
+    assert.equal(closed, 1);
+    assert.equal(headerTitle(), "Projetos"); // did not open the project
+    await type("sem link");
+    assert.notEqual(findAll(rows().at(-1), (x) => hasClass(x, "organizedtodo-row-title"))[0].reactive, true);
 });
 
 await t("disable cleans up", async () => {
