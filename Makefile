@@ -1,6 +1,6 @@
 UUID = organizedtodo@gabrielsmash.github.io
 INSTALL_DIR = $(HOME)/.local/share/gnome-shell/extensions/$(UUID)
-FILES = extension.js client.js utils.js stylesheet.css metadata.json LICENCE icons schemas
+FILES = extension.js client.js markdown.js utils.js stylesheet.css metadata.json LICENCE icons schemas
 ZIP = $(UUID).shell-extension.zip
 DAEMON = organizedtodo-daemon
 BUS_NAME = io.github.gabrielsmash.OrganizedTodo
