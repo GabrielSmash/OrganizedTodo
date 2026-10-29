@@ -1,4 +1,5 @@
-/* OrganizedTodo: minimal dark style, accent #78aeed */
+/* OrganizedTodo: minimal dark style; accents follow the panel icon's gradient
+   #4e5fc0 (blue) → #9a58a8 (purple) → #f0568c (pink) */
 
 .organizedtodo-main {
     spacing: 2px;
@@ -63,13 +64,16 @@
 
 .organizedtodo-accent-btn {
     font-weight: bold;
-    color: #14263a;
-    background-color: #78aeed;
+    color: #ffffff;
+    background-gradient-direction: horizontal;
+    background-gradient-start: #4e5fc0;
+    background-gradient-end: #f0568c;
 }
 
 .organizedtodo-accent-btn:hover,
 .organizedtodo-accent-btn:focus {
-    background-color: #99c1f1;
+    background-gradient-start: #6a7ad6;
+    background-gradient-end: #f47aa6;
 }
 
 .organizedtodo-danger-btn {
@@ -133,8 +137,11 @@
     font-size: 11px;
     font-weight: bold;
     text-align: center;
-    color: #78aeed;
-    background-color: rgba(120, 174, 237, 0.2);
+    /* The icon's gradient, much lighter */
+    color: #f6cde0;
+    background-gradient-direction: horizontal;
+    background-gradient-start: rgba(78, 95, 192, 0.35);
+    background-gradient-end: rgba(240, 86, 140, 0.35);
 }
 
 .organizedtodo-chevron {
@@ -155,17 +162,39 @@
     border-radius: 999px;
     border: 1px solid rgba(255, 255, 255, 0.4);
     font-size: 11px;
-    color: #14263a;
+    color: #ffffff;
 }
 
+/* Done check and burst use the panel icon's gradient: #4e5fc0 → #9a58a8 → #f0568c */
 .organizedtodo-check:hover,
 .organizedtodo-check:focus {
-    border-color: #78aeed;
+    border-color: #9a58a8;
 }
 
 .organizedtodo-check-on {
-    border-color: #78aeed;
-    background-color: #78aeed;
+    border-color: #9a58a8;
+    background-gradient-direction: vertical;
+    background-gradient-start: #4e5fc0;
+    background-gradient-end: #f0568c;
+}
+
+/* Dots of the burst when a todo is marked done (6px, centered on the check) */
+.organizedtodo-burst {
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+}
+
+.organizedtodo-burst-0 {
+    background-color: #4e5fc0;
+}
+
+.organizedtodo-burst-1 {
+    background-color: #9a58a8;
+}
+
+.organizedtodo-burst-2 {
+    background-color: #f0568c;
 }
 
 .organizedtodo-todo-label {
@@ -179,11 +208,32 @@
 }
 
 .organizedtodo-focused {
-    background-color: rgba(120, 174, 237, 0.12);
+    background-color: rgba(154, 88, 168, 0.15);
 }
 
+/* Symbolic icons take one color: the brightest of the gradient, readable on the dark menu */
 .organizedtodo-focused .organizedtodo-focus-btn {
-    color: #78aeed;
+    color: #f0568c;
+}
+
+.organizedtodo-notes-on {
+    color: #f0568c;
+}
+
+.organizedtodo-note-line {
+    padding: 1px 8px;
+    font-size: 13px;
+    color: #ffffff;
+}
+
+.organizedtodo-note-code {
+    margin: 4px 8px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-family: monospace;
+    font-size: 12px;
+    color: #ffffff;
+    background-color: rgba(255, 255, 255, 0.07);
 }
 
 .organizedtodo-drag-btn {
@@ -201,7 +251,7 @@
 }
 
 .organizedtodo-drag-over {
-    box-shadow: inset 0 2px 0 #78aeed;
+    box-shadow: inset 0 2px 0 #9a58a8;
 }
 
 /* ---------- empty state ---------- */
@@ -236,6 +286,6 @@
 }
 
 .organizedtodo-input:focus {
-    border-color: #78aeed;
+    border-color: #9a58a8;
     background-color: rgba(255, 255, 255, 0.1);
 }

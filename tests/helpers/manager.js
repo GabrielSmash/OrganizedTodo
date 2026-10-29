@@ -1,4 +1,6 @@
-// Data layer. Workspace shape (stored as one JSON string in GSettings):
+// In-memory engine behind tests/helpers/fake-client.mjs. Mirrors the rules of
+// daemon/src/model.rs, which is what the extension really uses.
+// Workspace shape (stored as one JSON string in GSettings):
 // { folders: [ { id, name, completed, lists: [ { id, name, todos: [ { name, isDone, isFocused? } ] } ] } ] }
 const WORKSPACE = "workspace";
 
@@ -202,6 +204,24 @@ export class TodoListManager {
             return false;
         }
         todo.name = name;
+        this._write(data);
+        return true;
+    }
+
+    /** Like the daemon: trailing blank lines dropped; empty notes leave no "notes" key. */
+    setTodoNotes(folderId, listId, index, notes) {
+        const data = this._read();
+        const todo = this._list(data, folderId, listId)?.todos[index];
+        if (!todo) {
+            return false;
+        }
+        notes = notes.trimEnd();
+        if (notes) {
+            todo.notes = notes;
+        }
+        else {
+            delete todo.notes;
+        }
         this._write(data);
         return true;
     }

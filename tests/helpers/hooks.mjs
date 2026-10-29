@@ -1,13 +1,20 @@
 // Node loader hooks: map the GNOME Shell imports (gi://, resource://) used by
 // extension.js to the fakes in stubs.mjs, so the real extension code runs in Node.
 const STUBS = new URL("./stubs.mjs", import.meta.url).href;
+// extension.js talks to the daemon through client.js; the tests swap it for an in-memory fake
+const FAKE_CLIENT = new URL("./fake-client.mjs", import.meta.url).href;
 
 const SOURCES = {
     "gi://Clutter": `export default {
         ActorAlign: { FILL: 0, CENTER: 1, START: 2, END: 3 },
-        EVENT_STOP: true, EVENT_PROPAGATE: false, KEY_Escape: 65307,
+        AnimationMode: { EASE_IN_QUAD: 4, EASE_OUT_QUAD: 5, EASE_OUT_BACK: 26 },
+        EVENT_STOP: true, EVENT_PROPAGATE: false,
+        KEY_Escape: 65307, KEY_Return: 65293, KEY_KP_Enter: 65421, KEY_Tab: 65289, KEY_ISO_Left_Tab: 65056,
+        ModifierType: { SHIFT_MASK: 1, CONTROL_MASK: 4 },
         Clone: class { constructor(o) { Object.assign(this, o); } } };`,
-    "gi://Gio": `export default { icon_new_for_string: (p) => ({ path: p }) };`,
+    "gi://Gio": `export default {
+        icon_new_for_string: (p) => ({ path: p }),
+        AppInfo: { launch_default_for_uri: (uri) => { (globalThis.__opened ??= []).push(uri); } } };`,
     "gi://GLib": `export default { markup_escape_text: (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;') };`,
     "gi://Meta": `export default { KeyBindingFlags: { NONE: 0 } };`,
     "gi://Shell": `export default { ActionMode: { ALL: 1 } };`,
@@ -21,6 +28,8 @@ const SOURCES = {
         export const gettext = (s) => s;`,
     "resource:///org/gnome/shell/ui/panelMenu.js": `import { PanelButton } from "${STUBS}"; export const Button = PanelButton;`,
     "resource:///org/gnome/shell/ui/main.js": `
+        import { Actor } from "${STUBS}";
+        export const uiGroup = new Actor();
         export const panel = { addToStatusArea() {} };
         export const wm = {
             addKeybinding(name) { globalThis.__bound = name; },
@@ -33,6 +42,7 @@ const SOURCES = {
 
 export async function resolve(spec, ctx, next) {
     if (spec in SOURCES) return { url: `stub:${spec}`, shortCircuit: true };
+    if (spec === "./client.js" && ctx.parentURL?.endsWith("/extension.js")) return { url: FAKE_CLIENT, shortCircuit: true };
     return next(spec, ctx);
 }
 export async function load(url, ctx, next) {

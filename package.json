@@ -5,7 +5,7 @@
   "description": "Dev tooling only (tests). The extension itself has no runtime dependencies.",
   "type": "module",
   "scripts": {
-    "test": "node tests/manager.test.mjs && node tests/ui.test.mjs"
+    "test": "node tests/markdown.test.mjs && node tests/ui.test.mjs"
   },
   "license": "MIT"
 }
