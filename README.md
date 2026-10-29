@@ -8,12 +8,16 @@ Derivado do [Todoit](https://github.com/wassimbj/todoit-gnome), de wassimbj (MIT
 
 ## Recursos
 
-- **Três telas com botão de voltar:** Projetos → Listas → Tarefas.
+- **Telas com botão de voltar:** Projetos → Listas → Tarefas → Anotações de uma tarefa.
 - **Conclusão automática:** ao marcar a última tarefa pendente de um projeto (somando todas as listas dele), o projeto vira "concluído" e você volta para a tela de projetos.
 - **Concluídos:** ficam guardados, acessíveis e podem ser reativados.
 - **Edição no próprio lugar:** renomeie projetos, listas e tarefas sem abrir outra tela.
 - **Foco e ordem:** destaque uma tarefa (ela fixa no topo da lista) e arraste para reordenar.
 - **Só um ícone no painel**, aberto por clique ou pelo atalho `Alt+Shift+Espaço`.
+- **Anotações por tarefa:** um texto livre para cada tarefa, com markdown completo (títulos, listas, caixinhas, blocos de código coloridos).
+- **Formatação nos nomes:** markdown simples em projetos, listas e tarefas; links abrem com um clique.
+- **Editor de anotações para código:** Tab indenta, Shift+Tab desfaz, Enter mantém o recuo.
+- **Animações:** o menu sai do ícone e volta para ele, as telas deslizam, linhas novas aparecem suavemente e concluir uma tarefa solta uma pequena explosão. Respeitam a opção do GNOME de reduzir animações.
 
 ## Requisitos
 
@@ -131,6 +135,7 @@ A pílula azul ao lado do nome mostra quantas tarefas pendentes existem.
 | Controle | O que faz |
 |---|---|
 | Círculo à esquerda | Marca ou desmarca como concluída (o texto fica riscado). |
+| Documento | Abre as **anotações** da tarefa. Fica azul quando a tarefa tem anotação. |
 | Lápis | Edita o texto da tarefa. **Enter** salva e **Esc** cancela. |
 | Alvo | **Foco**: fixa a tarefa no topo da lista (uma por lista). Clique de novo para soltar. |
 | Lixeira | Exclui a tarefa, sem pedir confirmação. |
@@ -143,6 +148,42 @@ A pílula azul ao lado do nome mostra quantas tarefas pendentes existem.
 - Para ver os concluídos, use o botão **`Concluídos · N`** no topo da tela de Projetos (ele só aparece se houver algum).
 - Dentro dos Concluídos você pode abrir um projeto para consultar, ou clicar em **Reativar** para devolvê-lo à lista ativa.
 - **Desmarcar** uma tarefa, ou **adicionar** uma nova, em um projeto concluído o reativa automaticamente.
+
+### Anotações
+
+Cada tarefa pode ter uma anotação. Clique no ícone de documento da tarefa para abrir; o título da tela é o nome dela.
+
+- O **lápis** no topo abre o editor com o texto cru. **Ctrl+Enter** ou **Salvar** grava; **Esc** cancela.
+- **Enter** quebra a linha mantendo o recuo da linha atual; **Tab** insere 4 espaços; **Shift+Tab** remove um nível.
+- O que você está digitando não se perde se o menu fechar: ao reabrir, a edição continua.
+- Para apagar a anotação, apague todo o texto e salve.
+
+### Formatação (markdown)
+
+**Em nomes** de projetos, listas e tarefas (uma linha):
+
+| Você digita | Aparece |
+|---|---|
+| `**negrito**`, `*itálico*`, `~~riscado~~` | negrito, itálico, riscado |
+| `` `código` `` | código em fonte monoespaçada |
+| `> observação` | citação |
+| `- item` | item de lista |
+| `[texto](site.com)`, `www.site.com`, `https://...` | link: clique no texto para abrir |
+
+**Em anotações**, tudo isso e mais:
+
+| Você digita | Aparece |
+|---|---|
+| `# Título`, `## Subtítulo`, `### Seção` | títulos (o espaço depois do `#` é obrigatório) |
+| `1. item` | lista numerada |
+| `- [ ] pendente`, `- [x] feito` | ☐ / ☑ |
+| `---` | linha divisória |
+| ` ```py ` … ` ``` ` | bloco de código, com cores para a linguagem |
+
+Linguagens com cores: Python (`py`), JavaScript/TypeScript (`js`, `ts`), Rust (`rs`), Shell (`sh`, `bash`) e JSON
+(`json`). Outras, ou um bloco sem linguagem, aparecem sem cores.
+
+Só links `http(s)` e e-mails são abertos; outros esquemas (`file:`, `ssh:`...) aparecem como texto.
 
 ### Mudar o atalho
 
@@ -173,7 +214,7 @@ Se você resetar o dconf (por exemplo, `dconf reset -f /`), perde as tarefas. Fa
 ## Desenvolvimento
 
 ```sh
-npm test         # testes de interface (com fakes do GNOME e do daemon)
+npm test         # testes de markdown e de interface (com fakes do GNOME e do daemon)
 cargo test --manifest-path daemon/Cargo.toml   # regras e persistência do daemon
 make schemas     # recompila o schema GSettings depois de editá-lo
 make install-daemon   # recompila e reinstala o daemon
@@ -211,6 +252,7 @@ Estrutura:
 | `daemon/` | Backend em Rust: regras (projetos, listas, tarefas, conclusão), persistência e serviço D-Bus. |
 | `client.js` | Cliente D-Bus do daemon; mantém a cópia dos dados para a interface. |
 | `extension.js` | As telas e a navegação. |
+| `markdown.js` | Markdown → markup do Pango: nomes, anotações e cores dos blocos de código. |
 | `stylesheet.css` | Visual. |
 | `icons/` | Ícone do painel. |
 | `schemas/` | Configurações (GSettings). |
@@ -222,6 +264,7 @@ Estrutura:
 - Testado apenas no GNOME Shell 50.
 - O zip (`make pack`) não inclui o daemon; é preciso compilá-lo a partir do código-fonte.
 - Sem sincronização, sem lembretes e sem datas nas tarefas.
+- As cores dos blocos de código são um destaque simples por palavras-chave, não um analisador completo da linguagem.
 
 ## Licença e créditos
 
