@@ -15,12 +15,30 @@ import { isEmpty } from "./utils.js";
 const MENU_WIDTH = 440;
 const SCROLL_MAX_HEIGHT = 380;
 const MAX_INPUT_CHARS = 200;
+// Durations in ms; the shell turns them to 0 when the user disables animations
+const OPEN_ANIMATION_TIME = 250;
+// Must not outlast the shell's own close fade (150 ms), which hides the menu when it ends
+const CLOSE_ANIMATION_TIME = 150;
+const SLIDE_ANIMATION_TIME = 200;
+const REVEAL_ANIMATION_TIME = 220;
+const PULSE_ANIMATION_TIME = 300;
+const BURST_ANIMATION_TIME = 450;
+const BURST_PARTICLES = 8;
+const BURST_DISTANCE = 22;
 
 const SCREEN = {
     FOLDERS: "folders",
     COMPLETED: "completed",
     LISTS: "lists",
     TODOS: "todos",
+};
+
+// How deep each screen is: going deeper slides in from the right, going back from the left
+const DEPTH = {
+    [SCREEN.FOLDERS]: 0,
+    [SCREEN.COMPLETED]: 1,
+    [SCREEN.LISTS]: 2,
+    [SCREEN.TODOS]: 3,
 };
 
 // A function, not a constant: gettext needs the extension instance, which does not exist at import time
@@ -52,6 +70,12 @@ export default class TodoListExtension extends Extension {
     /** Rebuild after DND finishes (avoid destroying actors mid-drop) */
     _pendingRerender = false;
     _dragging = false;
+    /** Screen and row keys of the last render, to tell which rows are new */
+    _shownRows = null;
+    /** { listId, index } of the todo whose check was just clicked, pulsed on the next render */
+    _pulse = null;
+    /** Where the panel icon is, as the menu's scaling origin [x, y] */
+    _iconPivot = [0.5, 0];
 
     enable() {
         this._client = new TodoClient(() => this._onWorkspaceChanged());
@@ -72,6 +96,8 @@ export default class TodoListExtension extends Extension {
         this._clearDragOver();
         this._pendingRerender = false;
         this._dragging = false;
+        this._shownRows = null;
+        this._pulse = null;
         Main.wm.removeKeybinding("open-organizedtodo");
         this._button?.destroy();
         this._button = null;
@@ -128,8 +154,15 @@ export default class TodoListExtension extends Extension {
         this._mainBox.add_child(scroll);
         this._mainBox.add_child(this._footer);
         this._button.menu.box.add_child(this._mainBox);
+        this._followIconPivot();
         // Half-finished interactions should not survive closing the menu
         this._button.menu.connect("open-state-changed", (_menu, isOpen) => {
+            if (isOpen) {
+                this._growFromIcon();
+            }
+            else {
+                this._shrinkIntoIcon();
+            }
             // A failed load gets another chance every time the menu opens
             if (isOpen && this._client?.error) {
                 this._send(this._client.refresh());
@@ -139,6 +172,51 @@ export default class TodoListExtension extends Extension {
                 this._pendingDelete = null;
                 this._render();
             }
+        });
+    }
+
+    /**
+     * Keep the menu's scaling origin on the panel icon. The menu is placed during layout,
+     * after it opens, so the origin is updated whenever its allocation changes.
+     */
+    _followIconPivot() {
+        const menuActor = this._button.menu.actor;
+        menuActor.connect("notify::allocation", () => {
+            const box = menuActor.get_allocation_box();
+            const width = box.get_width();
+            if (width <= 0) {
+                return;
+            }
+            const [iconX] = this._button.get_transformed_position();
+            const pivotX = (iconX + this._button.width / 2 - box.x1) / width;
+            this._iconPivot = [Math.min(Math.max(pivotX, 0), 1), 0];
+            menuActor.set_pivot_point(...this._iconPivot);
+        });
+    }
+
+    /** The menu grows out of the panel icon (replaces the shell's small default zoom). */
+    _growFromIcon() {
+        const menuActor = this._button.menu.actor;
+        // The shell resets the origin on every open and close; the allocation does not always change
+        menuActor.set_pivot_point(...this._iconPivot);
+        menuActor.set_scale(0.1, 0.1);
+        menuActor.ease({
+            scale_x: 1,
+            scale_y: 1,
+            duration: OPEN_ANIMATION_TIME,
+            mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+        });
+    }
+
+    /** The reverse of _growFromIcon: the menu goes back into the icon while the shell fades it out. */
+    _shrinkIntoIcon() {
+        const menuActor = this._button.menu.actor;
+        menuActor.set_pivot_point(...this._iconPivot);
+        menuActor.ease({
+            scale_x: 0.1,
+            scale_y: 0.1,
+            duration: CLOSE_ANIMATION_TIME,
+            mode: Clutter.AnimationMode.EASE_IN_QUAD,
         });
     }
 
@@ -174,10 +252,29 @@ export default class TodoListExtension extends Extension {
     }
 
     _navigate(view) {
+        const direction = Math.sign(DEPTH[view.screen] - DEPTH[this._view.screen]);
         this._view = view;
         this._renaming = null;
         this._pendingDelete = null;
+        this._pulse = null;
         this._render();
+        if (direction) {
+            this._slideIn(direction);
+        }
+    }
+
+    /** The new screen slides in from the side it comes from. */
+    _slideIn(direction) {
+        for (const actor of [this._header, this._content]) {
+            actor.opacity = 0;
+            actor.translation_x = 24 * direction;
+            actor.ease({
+                opacity: 255,
+                translation_x: 0,
+                duration: SLIDE_ANIMATION_TIME,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            });
+        }
     }
 
     /** Daemon data changed (from here or elsewhere): redraw, unless a drag is running. */
@@ -236,12 +333,88 @@ export default class TodoListExtension extends Extension {
                 this._renderTodos(folder, list);
                 break;
         }
+        this._revealNewRows(`${screen}:${this._view.folderId}:${this._view.listId}`);
+        this._pulseToggled();
         this._input.hint_text = inputHint(screen);
         this._footer.visible = screen !== SCREEN.COMPLETED;
         if (this._toFocus) {
             this._toFocus.grab_key_focus();
             this._toFocus.clutterText.set_selection(0, -1);
             this._toFocus = null;
+        }
+    }
+
+    /**
+     * Fade in the rows that were not there in the previous render of the same screen.
+     * Only while the menu is open: the first load and screen changes are not "new rows".
+     */
+    _revealNewRows(context) {
+        const rows = this._content.get_children().filter((row) => row._revealKey);
+        const previous = this._shownRows?.context === context ? this._shownRows.keys : null;
+        this._shownRows = { context, keys: new Set(rows.map((row) => row._revealKey)) };
+        if (!previous || !this._button.menu.isOpen) {
+            return;
+        }
+        for (const row of rows) {
+            if (previous.has(row._revealKey)) {
+                continue;
+            }
+            row.opacity = 0;
+            row.translation_y = -6;
+            row.ease({
+                opacity: 255,
+                translation_y: 0,
+                duration: REVEAL_ANIMATION_TIME,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+            });
+        }
+    }
+
+    /** Pop the check that was just clicked, once the redraw with the new state is on screen. */
+    _pulseToggled() {
+        if (!this._pulse) {
+            return;
+        }
+        const { listId, index } = this._pulse;
+        const row = this._content.get_children().find((r) => r._listId === listId && r._index === index);
+        if (!row) {
+            return;
+        }
+        this._pulse = null;
+        row._check.set_pivot_point(0.5, 0.5);
+        row._check.set_scale(1.35, 1.35);
+        row._check.ease({
+            scale_x: 1,
+            scale_y: 1,
+            duration: PULSE_ANIMATION_TIME,
+            mode: Clutter.AnimationMode.EASE_OUT_BACK,
+        });
+        if (row._done) {
+            // The new check is not laid out yet: burst once its position is known
+            const id = row._check.connect("notify::allocation", () => {
+                row._check.disconnect(id);
+                this._burstFrom(row._check);
+            });
+        }
+    }
+
+    /** Dots flying out of a check that was just marked done. They live above the menu, then vanish. */
+    _burstFrom(actor) {
+        const [x, y] = actor.get_transformed_position();
+        const [width, height] = actor.get_transformed_size();
+        for (let i = 0; i < BURST_PARTICLES; i++) {
+            const angle = (2 * Math.PI * i) / BURST_PARTICLES;
+            const dot = new St.Widget({ style_class: "organizedtodo-burst" });
+            Main.uiGroup.add_child(dot);
+            dot.set_position(x + width / 2 - 3, y + height / 2 - 3);
+            dot.ease({
+                translation_x: Math.cos(angle) * BURST_DISTANCE,
+                translation_y: Math.sin(angle) * BURST_DISTANCE,
+                opacity: 0,
+                duration: BURST_ANIMATION_TIME,
+                mode: Clutter.AnimationMode.EASE_OUT_QUAD,
+                onStopped: () => dot.destroy(),
+            });
         }
     }
 
@@ -498,6 +671,7 @@ export default class TodoListExtension extends Extension {
             track_hover: true,
             x_expand: true,
         });
+        row._revealKey = key;
         const info = new St.BoxLayout({
             vertical: true,
             x_expand: true,
@@ -580,6 +754,7 @@ export default class TodoListExtension extends Extension {
             }),
         });
         check.connect("clicked", async () => {
+            this._pulse = { listId, index };
             const folderName = this._client.getFolder(folderId)?.name ?? "";
             let completedProject;
             try {
@@ -587,6 +762,7 @@ export default class TodoListExtension extends Extension {
             }
             catch (e) {
                 console.error(`organizedtodo: daemon call failed: ${e}`);
+                this._pulse = null;
                 return;
             }
             // The extension may have been disabled while waiting for the daemon
@@ -636,6 +812,12 @@ export default class TodoListExtension extends Extension {
         row.add_child(remove);
         row.add_child(dragHandle);
         this._makeSortable(row, dragHandle, folderId, listId, index);
+        // By name, not index: reordering or toggling a todo does not make it "new"
+        row._revealKey = `todo:${listId}:${task.name}`;
+        row._listId = listId;
+        row._index = index;
+        row._check = check;
+        row._done = task.isDone;
         return row;
     }
 
