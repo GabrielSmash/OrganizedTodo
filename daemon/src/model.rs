@@ -34,6 +34,9 @@ pub struct Todo {
     // The JS UI only writes isFocused when true; keep the stored JSON identical
     #[serde(default, skip_serializing_if = "is_false")]
     pub is_focused: bool,
+    // Only written when there is something: todos without notes keep the same JSON
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub notes: String,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -180,6 +183,7 @@ impl Workspace {
             name: name.to_string(),
             is_done: false,
             is_focused: false,
+            notes: String::new(),
         });
         // A completed project that gets a pending todo is not completed anymore
         folder.completed = false;
@@ -215,6 +219,24 @@ impl Workspace {
             return false;
         };
         todo.name = name.to_string();
+        true
+    }
+
+    /// Notes may be empty (that clears them); trailing blank lines are dropped.
+    pub fn set_todo_notes(
+        &mut self,
+        folder_id: &str,
+        list_id: &str,
+        index: usize,
+        notes: &str,
+    ) -> bool {
+        let Some(todo) = self
+            .list_mut(folder_id, list_id)
+            .and_then(|list| list.todos.get_mut(index))
+        else {
+            return false;
+        };
+        todo.notes = notes.trim_end().to_string();
         true
     }
 
@@ -396,6 +418,17 @@ mod tests {
         let todos = &workspace.list("f1", "l1").unwrap().todos;
         assert_eq!(todos.len(), 1);
         assert_eq!(todos[0].name, "Y2");
+    }
+
+    #[test]
+    fn notes_are_saved_cleared_and_only_written_when_present() {
+        let mut workspace = sample();
+        assert!(workspace.set_todo_notes("f1", "l1", 0, "# Plano\n- passo\n\n"));
+        assert!(!workspace.set_todo_notes("f1", "l1", 9, "x"));
+        let raw = serde_json::to_string(&workspace).unwrap();
+        assert!(raw.contains(r##""notes":"# Plano\n- passo""##));
+        assert!(workspace.set_todo_notes("f1", "l1", 0, ""));
+        assert!(!serde_json::to_string(&workspace).unwrap().contains("notes"));
     }
 
     #[test]

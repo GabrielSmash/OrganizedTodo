@@ -8,7 +8,9 @@ const SOURCES = {
     "gi://Clutter": `export default {
         ActorAlign: { FILL: 0, CENTER: 1, START: 2, END: 3 },
         AnimationMode: { EASE_IN_QUAD: 4, EASE_OUT_QUAD: 5, EASE_OUT_BACK: 26 },
-        EVENT_STOP: true, EVENT_PROPAGATE: false, KEY_Escape: 65307,
+        EVENT_STOP: true, EVENT_PROPAGATE: false,
+        KEY_Escape: 65307, KEY_Return: 65293, KEY_KP_Enter: 65421, KEY_Tab: 65289, KEY_ISO_Left_Tab: 65056,
+        ModifierType: { SHIFT_MASK: 1, CONTROL_MASK: 4 },
         Clone: class { constructor(o) { Object.assign(this, o); } } };`,
     "gi://Gio": `export default {
         icon_new_for_string: (p) => ({ path: p }),

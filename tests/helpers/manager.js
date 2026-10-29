@@ -208,6 +208,24 @@ export class TodoListManager {
         return true;
     }
 
+    /** Like the daemon: trailing blank lines dropped; empty notes leave no "notes" key. */
+    setTodoNotes(folderId, listId, index, notes) {
+        const data = this._read();
+        const todo = this._list(data, folderId, listId)?.todos[index];
+        if (!todo) {
+            return false;
+        }
+        notes = notes.trimEnd();
+        if (notes) {
+            todo.notes = notes;
+        }
+        else {
+            delete todo.notes;
+        }
+        this._write(data);
+        return true;
+    }
+
     /**
      * Flip a todo's done state.
      * Returns true when this made every todo of the project done, in which

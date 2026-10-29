@@ -388,6 +388,118 @@ await t("animations: menu grows from the icon, screens slide, new rows fade in, 
     assert.deepEqual(menu.eased.at(-1).to, { scale_x: 0.1, scale_y: 0.1, duration: 150, mode: 4 });
 });
 
+// ---- notes: keys as the editor receives them
+const KEY = { Return: 65293, Tab: 65289, LeftTab: 65056, Escape: 65307 };
+const press = (entry, key, state = 0) => entry.clutterText.emit("key-press-event", { get_key_symbol: () => key, get_state: () => state });
+const CTRL = 4;
+const noteLines = () => findAll(ext._content, (x) => hasClass(x, "organizedtodo-note-line"));
+const noteCode = () => findAll(ext._content, (x) => hasClass(x, "organizedtodo-note-code"));
+const notesBtn = (row) => btnByIcon(row, "text-x-generic-symbolic")[0];
+const storedTodos = () => ext._client.getList(ext._view.folderId, ext._view.listId).todos;
+
+await t("notes: the row button opens the todo's notes; written in markdown, drawn per line, code as a box", async () => {
+    ext._navigate({ screen: "folders" });
+    await type("Notas");
+    await click(mainBtn(rows().at(-1)));
+    await type("L");
+    await click(mainBtn(rows()[0]));
+    await type("**a**");
+    await type("b");
+    assert.equal(hasClass(notesBtn(rows()[0]), "organizedtodo-notes-on"), false);
+    await click(notesBtn(rows()[0]));
+    assert.equal(headerTitle(), "**a**");
+    assert.match(findAll(ext._header, (x) => hasClass(x, "organizedtodo-title"))[0].clutterText.markup, /<b>a<\/b>/);
+    assert.equal(headerSub(), "L");
+    assert.equal(ext._footer.visible, false);
+    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "📝 Sem anotações");
+
+    await click(btnByIcon(ext._header, "document-edit-symbolic")[0]);
+    const entry = entries()[0];
+    assert.equal(entry.text, "");
+    assert.equal(globalThis.__focus, entry);
+    entry.text = "# Plano\nver www.a.com\n```py\ndef f():\n```\n\n";
+    entry.clutterText.emit("text-changed");
+    assert.deepEqual(press(entry, KEY.Return, CTRL), [true]); // Ctrl+Enter saves
+    await flush();
+    assert.equal(entries().length, 0);
+    assert.equal(storedTodos()[0].notes, "# Plano\nver www.a.com\n```py\ndef f():\n```");
+    const [title, link] = noteLines();
+    assert.equal(title.clutterText.markup, `<span weight="bold" size="x-large">Plano</span>`);
+    assert.equal(link.reactive, true);
+    link.emit("button-release-event");
+    assert.equal(globalThis.__opened.at(-1), "https://www.a.com");
+    assert.equal(noteCode().length, 1);
+    assert.match(noteCode()[0].clutterText.markup, /<span foreground="#dc8add">def<\/span>/);
+
+    await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
+    assert.equal(ext._view.screen, "todos");
+    assert.equal(hasClass(notesBtn(rows()[0]), "organizedtodo-notes-on"), true);
+    assert.equal(hasClass(notesBtn(rows()[1]), "organizedtodo-notes-on"), false);
+});
+
+await t("notes editor: Enter keeps the indentation, Tab indents, Shift+Tab unindents, Escape cancels", async () => {
+    await click(notesBtn(rows()[1]));
+    await click(btnByIcon(ext._header, "document-edit-symbolic")[0]);
+    const entry = entries()[0];
+    entry.text = "😀 def f():";
+    assert.deepEqual(press(entry, KEY.Return), [true]);
+    assert.deepEqual(press(entry, KEY.Tab), [true]); // the focus stays in the entry
+    entry.clutterText.insert_text("x", -1);
+    press(entry, KEY.Return);
+    assert.equal(entry.text, "😀 def f():\n    x\n    ");
+    assert.deepEqual(press(entry, KEY.LeftTab), [true]);
+    assert.equal(entry.text, "😀 def f():\n    x\n");
+    assert.equal(ext._editingNotes.draft, entry.text);
+    assert.deepEqual(press(entry, 97), [false]); // other keys are typed as usual
+    // the line being typed stays in view: 100px visible, the entry at 0, its text 8px down
+    const adjustment = ext._scroll.vadjustment;
+    entry.y = 0;
+    entry.clutterText.y = 8;
+    entry.clutterText.cursorRect = { y: 150, height: 20 };
+    entry.clutterText.emit("cursor-changed");
+    assert.equal(adjustment.value, 78); // scrolled just enough: the cursor at the bottom
+    entry.clutterText.cursorRect = { y: 10, height: 20 };
+    adjustment.emit("changed");
+    assert.equal(adjustment.value, 18); // back up to the cursor
+    assert.deepEqual(press(entry, KEY.Escape), [true]); // cancels, does not close the menu
+    assert.equal(entries().length, 0);
+    assert.equal(storedTodos()[1].notes, undefined);
+});
+
+await t("notes: the draft survives redraws and closing the menu; saving empty clears", async () => {
+    await click(btnByIcon(ext._header, "document-edit-symbolic")[0]);
+    entries()[0].text = "rascunho";
+    entries()[0].clutterText.emit("text-changed");
+    ext._render(); // a Changed signal while typing
+    ext._button.menu.emit("open-state-changed", false);
+    assert.equal(entries()[0].text, "rascunho");
+    await click(pill(ext._header, "Salvar"));
+    assert.equal(storedTodos()[1].notes, "rascunho");
+    await click(btnByIcon(ext._header, "document-edit-symbolic")[0]);
+    assert.equal(entries()[0].text, "rascunho");
+    entries()[0].text = "";
+    entries()[0].clutterText.emit("text-changed");
+    await click(pill(ext._header, "Salvar"));
+    assert.equal(storedTodos()[1].notes, undefined);
+    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "📝 Sem anotações");
+});
+
+await t("notes of a todo that moved or was removed fall back to its list", async () => {
+    // "b" is index 1: focusing it moves it to the top, index 1 is now another todo
+    const { folderId, listId } = ext._view;
+    await ext._client.setTodoFocus(folderId, listId, 1, true);
+    await flush();
+    assert.equal(ext._view.screen, "todos");
+    assert.equal(headerTitle(), "L");
+    assert.equal(ext._view.listId, listId);
+    await click(notesBtn(rows()[1])); // "**a**", now index 1
+    await click(btnByIcon(ext._header, "document-edit-symbolic")[0]);
+    await ext._client.removeTodo(folderId, listId, 1);
+    await flush();
+    assert.equal(ext._view.screen, "todos");
+    assert.equal(ext._editingNotes, null);
+});
+
 await t("disable cleans up", async () => {
     ext.disable();
     assert.equal(globalThis.__unbound, "open-organizedtodo");
