@@ -324,6 +324,70 @@ await t("clicking a name with a link opens it and closes the menu; the row does 
     assert.notEqual(findAll(rows().at(-1), (x) => hasClass(x, "organizedtodo-row-title"))[0].reactive, true);
 });
 
+await t("animations: menu grows from the icon, screens slide, new rows fade in, checks pulse", async () => {
+    const menu = ext._button.menu;
+    // the pivot follows the icon: icon centered at x=410, menu spanning 0..440
+    ext._button.x = 400; ext._button.width = 20;
+    menu.allocation = { x1: 0, get_width: () => 440 };
+    menu.emit("notify::allocation");
+    assert.deepEqual(menu.pivot, [410 / 440, 0]);
+    menu.isOpen = true;
+    menu.pivot = [0.5, 0]; // the shell resets it on open; the allocation may not change
+    menu.emit("open-state-changed", true);
+    assert.deepEqual(menu.pivot, [410 / 440, 0]);
+    assert.deepEqual(menu.eased.at(-1), { from: { scale_x: 0.1, scale_y: 0.1 }, to: { scale_x: 1, scale_y: 1, duration: 250, mode: 5 } });
+
+    // deeper: from the right; back: from the left; same screen re-render: no slide
+    ext._content.eased = [];
+    await type("Anim");
+    assert.equal(ext._content.eased.length, 0);
+    await click(mainBtn(rows().at(-1)));
+    assert.equal(ext._content.eased.at(-1).from.translation_x, 24);
+    await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
+    assert.equal(ext._content.eased.at(-1).from.translation_x, -24);
+
+    // only the row that was not there before fades in
+    const before = rows().length;
+    await type("Nova");
+    const all = rows();
+    assert.equal(all.length, before + 1);
+    assert.deepEqual(all.at(-1).eased?.[0].from, { opacity: 0, translation_y: -6 });
+    assert.ok(all.slice(0, -1).every((row) => !row.eased));
+
+    // the clicked check pops once the redraw shows the new state
+    await click(mainBtn(all.at(-1)));
+    await type("L");
+    await click(mainBtn(rows()[0]));
+    await type("um");
+    await type("dois");
+    await click(checks()[0]);
+    const check = checks()[0];
+    assert.deepEqual(check.eased?.[0].from, { scale_x: 1.35, scale_y: 1.35 });
+    assert.equal(checks()[1].eased, undefined);
+    assert.equal(ext._pulse, null);
+
+    // marked done: once laid out, 8 dots fly out of the check's center and are destroyed
+    const { uiGroup } = await import("resource:///org/gnome/shell/ui/main.js");
+    Object.assign(check, { x: 100, y: 50, width: 18, height: 18 });
+    check.emit("notify::allocation");
+    const dots = uiGroup.children.slice(-8);
+    assert.equal(dots.length, 8);
+    assert.ok(dots.every((dot) => dot.x === 106 && dot.y === 56 && dot.destroyed));
+    assert.ok(Math.abs(dots[0].translation_x - 22) < 1e-9 && Math.abs(dots[2].translation_y - 22) < 1e-9);
+    // unchecking pops the check but does not burst
+    const count = uiGroup.children.length;
+    await click(checks()[0]);
+    checks()[0].emit("notify::allocation");
+    assert.equal(uiGroup.children.length, count);
+
+    // closing: back into the icon, within the shell's fade
+    menu.pivot = [0.5, 0];
+    menu.isOpen = false;
+    menu.emit("open-state-changed", false);
+    assert.deepEqual(menu.pivot, [410 / 440, 0]);
+    assert.deepEqual(menu.eased.at(-1).to, { scale_x: 0.1, scale_y: 0.1, duration: 150, mode: 4 });
+});
+
 await t("disable cleans up", async () => {
     ext.disable();
     assert.equal(globalThis.__unbound, "open-organizedtodo");

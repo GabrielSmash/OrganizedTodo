@@ -168,6 +168,14 @@
     background-color: #78aeed;
 }
 
+/* Dots of the burst when a todo is marked done (6px, centered on the check) */
+.organizedtodo-burst {
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background-color: #78aeed;
+}
+
 .organizedtodo-todo-label {
     padding: 6px 4px;
     font-size: 13px;

@@ -7,6 +7,7 @@ const FAKE_CLIENT = new URL("./fake-client.mjs", import.meta.url).href;
 const SOURCES = {
     "gi://Clutter": `export default {
         ActorAlign: { FILL: 0, CENTER: 1, START: 2, END: 3 },
+        AnimationMode: { EASE_IN_QUAD: 4, EASE_OUT_QUAD: 5, EASE_OUT_BACK: 26 },
         EVENT_STOP: true, EVENT_PROPAGATE: false, KEY_Escape: 65307,
         Clone: class { constructor(o) { Object.assign(this, o); } } };`,
     "gi://Gio": `export default {
@@ -25,6 +26,8 @@ const SOURCES = {
         export const gettext = (s) => s;`,
     "resource:///org/gnome/shell/ui/panelMenu.js": `import { PanelButton } from "${STUBS}"; export const Button = PanelButton;`,
     "resource:///org/gnome/shell/ui/main.js": `
+        import { Actor } from "${STUBS}";
+        export const uiGroup = new Actor();
         export const panel = { addToStatusArea() {} };
         export const wm = {
             addKeybinding(name) { globalThis.__bound = name; },
