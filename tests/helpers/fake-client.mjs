@@ -73,6 +73,7 @@ export class TodoClient {
     addTodo(folderId, listId, name) { return this._mutate((m) => m.addTodo(folderId, listId, name)); }
     removeTodo(folderId, listId, index) { return this._mutate((m) => m.removeTodo(folderId, listId, index)); }
     renameTodo(folderId, listId, index, name) { return this._mutate((m) => m.renameTodo(folderId, listId, index, name)); }
+    setTodoNotes(folderId, listId, index, notes) { return this._mutate((m) => m.setTodoNotes(folderId, listId, index, notes)); }
     toggleTodo(folderId, listId, index) { return this._mutate((m) => m.toggleTodo(folderId, listId, index)); }
     setTodoFocus(folderId, listId, index, focused) { return this._mutate((m) => m.setTodoFocus(folderId, listId, index, focused)); }
     reorderTodo(folderId, listId, fromIndex, toIndex) { return this._mutate((m) => m.reorderTodo(folderId, listId, fromIndex, toIndex)); }

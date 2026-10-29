@@ -9,12 +9,14 @@ import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as DND from "resource:///org/gnome/shell/ui/dnd.js";
 import { TodoClient, undoneCount, todoCount } from "./client.js";
-import { markdownToMarkup, markdownToPlain, firstLink } from "./markdown.js";
+import { markdownToMarkup, markdownToPlain, firstLink, noteBlocks } from "./markdown.js";
 import { isEmpty } from "./utils.js";
 
 const MENU_WIDTH = 440;
 const SCROLL_MAX_HEIGHT = 380;
 const MAX_INPUT_CHARS = 200;
+const MAX_NOTES_CHARS = 5000;
+const NOTES_INDENT = "    ";
 // Durations in ms; the shell turns them to 0 when the user disables animations
 const OPEN_ANIMATION_TIME = 250;
 // Must not outlast the shell's own close fade (150 ms), which hides the menu when it ends
@@ -31,6 +33,7 @@ const SCREEN = {
     COMPLETED: "completed",
     LISTS: "lists",
     TODOS: "todos",
+    NOTES: "notes",
 };
 
 // How deep each screen is: going deeper slides in from the right, going back from the left
@@ -39,6 +42,7 @@ const DEPTH = {
     [SCREEN.COMPLETED]: 1,
     [SCREEN.LISTS]: 2,
     [SCREEN.TODOS]: 3,
+    [SCREEN.NOTES]: 4,
 };
 
 // A function, not a constant: gettext needs the extension instance, which does not exist at import time
@@ -47,9 +51,60 @@ const inputHint = (screen) => ({
     [SCREEN.LISTS]: _("Nova lista..."),
     [SCREEN.TODOS]: _("Nova tarefa..."),
     [SCREEN.COMPLETED]: "",
+    [SCREEN.NOTES]: "",
 }[screen]);
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+// Clutter.Text counts positions in characters (-1 is the end); JS strings count UTF-16
+// units, which differ for emoji. Spreading a string gives one item per character.
+
+/** Characters of `text` and the cursor position among them. */
+function charsAndCursor(text) {
+    const chars = [...text.get_text()];
+    const cursor = text.get_cursor_position();
+    return [chars, cursor < 0 ? chars.length : cursor];
+}
+
+/** Where the line holding position `at` starts. */
+function lineStart(chars, at) {
+    let start = at;
+    while (start > 0 && chars[start - 1] !== "\n") {
+        start--;
+    }
+    return start;
+}
+
+function insertAtCursor(text, insertion) {
+    text.delete_selection();
+    text.insert_text(insertion, text.get_cursor_position());
+}
+
+/** Enter: the new line starts with the same spaces as the current one. */
+function newLineKeepingIndent(text) {
+    text.delete_selection();
+    const [chars, cursor] = charsAndCursor(text);
+    const start = lineStart(chars, cursor);
+    let end = start;
+    while (end < cursor && (chars[end] === " " || chars[end] === "\t")) {
+        end++;
+    }
+    const indent = chars.slice(start, end).join("");
+    text.insert_text(`\n${indent}`, text.get_cursor_position());
+}
+
+/** Shift+Tab: remove up to one indentation level from the start of the cursor's line. */
+function unindentLine(text) {
+    const [chars, cursor] = charsAndCursor(text);
+    const start = lineStart(chars, cursor);
+    let count = 0;
+    while (count < NOTES_INDENT.length && chars[start + count] === " ") {
+        count++;
+    }
+    if (count > 0) {
+        text.delete_text(start, start + count);
+    }
+}
 
 export default class TodoListExtension extends Extension {
     _client;
@@ -58,6 +113,7 @@ export default class TodoListExtension extends Extension {
     _header;
     _content;
     _footer;
+    _scroll;
     _input;
     _view;
     /** { key } of the row being renamed inline, or null */
@@ -76,6 +132,8 @@ export default class TodoListExtension extends Extension {
     _pulse = null;
     /** Where the panel icon is, as the menu's scaling origin [x, y] */
     _iconPivot = [0.5, 0];
+    /** { draft } while the notes screen is in edit mode, or null. Kept when the menu closes. */
+    _editingNotes = null;
 
     enable() {
         this._client = new TodoClient(() => this._onWorkspaceChanged());
@@ -105,10 +163,12 @@ export default class TodoListExtension extends Extension {
         this._header = null;
         this._content = null;
         this._footer = null;
+        this._scroll = null;
         this._input = null;
         this._toFocus = null;
         this._renaming = null;
         this._pendingDelete = null;
+        this._editingNotes = null;
         this._client?.destroy();
         this._client = null;
     }
@@ -130,13 +190,13 @@ export default class TodoListExtension extends Extension {
             style_class: "organizedtodo-content",
             x_expand: true,
         });
-        const scroll = new St.ScrollView({
+        this._scroll = new St.ScrollView({
             style_class: "vfade organizedtodo-scroll",
             style: `max-height: ${SCROLL_MAX_HEIGHT}px;`,
             hscrollbar_policy: St.PolicyType.NEVER,
             overlay_scrollbars: true,
         });
-        scroll.add_child(this._content);
+        this._scroll.add_child(this._content);
         this._input = new St.Entry({
             style_class: "organizedtodo-input",
             can_focus: true,
@@ -151,7 +211,7 @@ export default class TodoListExtension extends Extension {
         });
         this._footer.add_child(this._input);
         this._mainBox.add_child(this._header);
-        this._mainBox.add_child(scroll);
+        this._mainBox.add_child(this._scroll);
         this._mainBox.add_child(this._footer);
         this._button.menu.box.add_child(this._mainBox);
         this._followIconPivot();
@@ -257,6 +317,7 @@ export default class TodoListExtension extends Extension {
         this._renaming = null;
         this._pendingDelete = null;
         this._pulse = null;
+        this._editingNotes = null;
         this._render();
         if (direction) {
             this._slideIn(direction);
@@ -298,8 +359,13 @@ export default class TodoListExtension extends Extension {
             ? this._client.getFolder(this._view.folderId)
             : null;
         const list = folder?.lists.find((l) => l.id === this._view.listId) ?? null;
+        const todo = list?.todos[this._view.index] ?? null;
         // Whatever the view points to may have been deleted (here or via dconf)
         let screen = this._view.screen;
+        // By index and name: if todos moved or were removed, do not show another todo's notes
+        if (screen === SCREEN.NOTES && todo?.name !== this._view.name) {
+            screen = SCREEN.TODOS;
+        }
         if (screen === SCREEN.TODOS && !list) {
             screen = folder ? SCREEN.LISTS : SCREEN.FOLDERS;
         }
@@ -310,7 +376,8 @@ export default class TodoListExtension extends Extension {
             screen = SCREEN.FOLDERS;
         }
         if (screen !== this._view.screen) {
-            this._view = { screen, folderId: folder?.id };
+            this._view = { screen, folderId: folder?.id, listId: screen === SCREEN.TODOS ? list.id : undefined };
+            this._editingNotes = null;
         }
 
         this._header.destroy_all_children();
@@ -332,11 +399,14 @@ export default class TodoListExtension extends Extension {
             case SCREEN.TODOS:
                 this._renderTodos(folder, list);
                 break;
+            case SCREEN.NOTES:
+                this._renderNotes(folder, list, todo);
+                break;
         }
         this._revealNewRows(`${screen}:${this._view.folderId}:${this._view.listId}`);
         this._pulseToggled();
         this._input.hint_text = inputHint(screen);
-        this._footer.visible = screen !== SCREEN.COMPLETED;
+        this._footer.visible = screen !== SCREEN.COMPLETED && screen !== SCREEN.NOTES;
         if (this._toFocus) {
             this._toFocus.grab_key_focus();
             this._toFocus.clutterText.set_selection(0, -1);
@@ -404,7 +474,8 @@ export default class TodoListExtension extends Extension {
         const [width, height] = actor.get_transformed_size();
         for (let i = 0; i < BURST_PARTICLES; i++) {
             const angle = (2 * Math.PI * i) / BURST_PARTICLES;
-            const dot = new St.Widget({ style_class: "organizedtodo-burst" });
+            // The dots take turns in the colors of the panel icon
+            const dot = new St.Widget({ style_class: `organizedtodo-burst organizedtodo-burst-${i % 3}` });
             Main.uiGroup.add_child(dot);
             dot.set_position(x + width / 2 - 3, y + height / 2 - 3);
             dot.ease({
@@ -512,6 +583,113 @@ export default class TodoListExtension extends Extension {
         });
     }
 
+    /** Notes of one todo: drawn as markdown, or the raw text while editing. */
+    _renderNotes(folder, list, todo) {
+        const { index } = this._view;
+        const save = () => {
+            const notes = this._editingNotes.draft;
+            this._editingNotes = null;
+            this._send(this._client.setTodoNotes(folder.id, list.id, index, notes));
+            this._render();
+        };
+        const action = this._editingNotes
+            ? this._pillButton(_("Salvar"), save, "organizedtodo-accent-btn")
+            : this._iconButton("document-edit-symbolic", "", () => {
+                this._editingNotes = { draft: todo.notes ?? "" };
+                this._render();
+            });
+        this._buildHeader({
+            title: todo.name,
+            subtitle: list.name,
+            onBack: () => this._navigate({ screen: SCREEN.TODOS, folderId: folder.id, listId: list.id }),
+            actions: [action],
+        });
+        if (this._editingNotes) {
+            const entry = this._notesEntry(save);
+            this._content.add_child(entry);
+            entry.grab_key_focus();
+            return;
+        }
+        if (!todo.notes) {
+            this._emptyState(_("📝 Sem anotações"), _("Use o lápis para escrever; aceita markdown"));
+            return;
+        }
+        for (const { markup, link, code } of noteBlocks(todo.notes)) {
+            const style_class = code ? "organizedtodo-note-code" : "organizedtodo-note-line";
+            const line = this._markupLabel(markup, link, { style_class, x_expand: true });
+            line.clutterText.line_wrap = true;
+            line.clutterText.set_ellipsize(0);
+            this._content.add_child(line);
+        }
+    }
+
+    /** Multi-line entry: Enter breaks the line, Ctrl+Enter saves, Escape cancels. */
+    _notesEntry(onSave) {
+        const entry = new St.Entry({
+            text: this._editingNotes.draft,
+            hint_text: _("Escreva em markdown..."),
+            style_class: "organizedtodo-input",
+            can_focus: true,
+            x_expand: true,
+        });
+        const text = entry.clutterText;
+        text.single_line_mode = false;
+        text.activatable = false;
+        text.line_wrap = true;
+        text.set_max_length(MAX_NOTES_CHARS);
+        // The draft survives redraws (a Changed signal) and closing the menu
+        text.connect("text-changed", () => {
+            this._editingNotes.draft = entry.get_text();
+        });
+        text.connect("key-press-event", (_actor, event) => {
+            const key = event.get_key_symbol();
+            if (key === Clutter.KEY_Escape) {
+                // Cancel the edit only; do not let Escape close the whole menu
+                this._editingNotes = null;
+                this._render();
+                return Clutter.EVENT_STOP;
+            }
+            const state = event.get_state();
+            const isEnter = key === Clutter.KEY_Return || key === Clutter.KEY_KP_Enter;
+            if (isEnter && state & Clutter.ModifierType.CONTROL_MASK) {
+                onSave();
+                return Clutter.EVENT_STOP;
+            }
+            if (isEnter) {
+                newLineKeepingIndent(text);
+                return Clutter.EVENT_STOP;
+            }
+            // Shift+Tab arrives as ISO_Left_Tab; either way, Tab must not move the focus away
+            if (key === Clutter.KEY_ISO_Left_Tab || (key === Clutter.KEY_Tab && state & Clutter.ModifierType.SHIFT_MASK)) {
+                unindentLine(text);
+                return Clutter.EVENT_STOP;
+            }
+            if (key === Clutter.KEY_Tab) {
+                insertAtCursor(text, NOTES_INDENT);
+                return Clutter.EVENT_STOP;
+            }
+            return Clutter.EVENT_PROPAGATE;
+        });
+        // The content scrolls at SCROLL_MAX_HEIGHT; keep the line being typed in view
+        const adjustment = this._scroll.vadjustment ?? this._scroll.vscroll.adjustment;
+        const showCursor = () => {
+            const rect = text.get_cursor_rect();
+            const top = entry.y + text.y + rect.get_y();
+            const bottom = top + rect.get_height();
+            if (top < adjustment.value) {
+                adjustment.value = top;
+            }
+            else if (bottom > adjustment.value + adjustment.page_size) {
+                adjustment.value = bottom - adjustment.page_size;
+            }
+        };
+        text.connect("cursor-changed", showCursor);
+        // A new line makes the content taller only after the next layout: try again then
+        const changedId = adjustment.connect("changed", showCursor);
+        entry.connect("destroy", () => adjustment.disconnect(changedId));
+        return entry;
+    }
+
     // ------------------------------------------------------- shared pieces
 
     _buildHeader({ title, subtitle, onBack, actions = [] }) {
@@ -550,10 +728,14 @@ export default class TodoListExtension extends Extension {
      * When the text has a link, clicking the label opens it (and nothing behind it reacts).
      */
     _markdownLabel(text, props, { struck = false } = {}) {
-        const label = new St.Label({ text, ...props });
         const markup = markdownToMarkup(text);
-        label.clutterText.set_markup(struck ? `<s>${markup}</s>` : markup);
-        const url = firstLink(text);
+        return this._markupLabel(struck ? `<s>${markup}</s>` : markup, firstLink(text), { text, ...props });
+    }
+
+    /** Label drawing `markup`; when `url` is set, clicking the label opens it. */
+    _markupLabel(markup, url, props) {
+        const label = new St.Label(props);
+        label.clutterText.set_markup(markup);
         if (url) {
             label.reactive = true;
             // Swallow the press too, or a parent button (the row) would still react
@@ -782,6 +964,9 @@ export default class TodoListExtension extends Extension {
         label.clutterText.line_wrap = true;
         label.clutterText.set_ellipsize(0);
 
+        const notes = this._iconButton("text-x-generic-symbolic", task.notes ? "organizedtodo-notes-on" : "", () => {
+            this._navigate({ screen: SCREEN.NOTES, folderId, listId, index, name: task.name });
+        });
         const edit = this._iconButton("document-edit-symbolic", "", () => {
             this._renaming = { key };
             this._pendingDelete = null;
@@ -807,6 +992,7 @@ export default class TodoListExtension extends Extension {
 
         row.add_child(check);
         row.add_child(label);
+        row.add_child(notes);
         row.add_child(edit);
         row.add_child(focus);
         row.add_child(remove);

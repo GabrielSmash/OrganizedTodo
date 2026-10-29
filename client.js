@@ -63,6 +63,13 @@ const INTERFACE_XML = `
       <arg name="name" type="s" direction="in"/>
       <arg type="b" direction="out"/>
     </method>
+    <method name="SetTodoNotes">
+      <arg name="folder_id" type="s" direction="in"/>
+      <arg name="list_id" type="s" direction="in"/>
+      <arg name="index" type="u" direction="in"/>
+      <arg name="notes" type="s" direction="in"/>
+      <arg type="b" direction="out"/>
+    </method>
     <method name="ToggleTodo">
       <arg name="folder_id" type="s" direction="in"/>
       <arg name="list_id" type="s" direction="in"/>
@@ -244,6 +251,10 @@ export class TodoClient {
 
     renameTodo(folderId, listId, index, name) {
         return this._call("RenameTodo", folderId, listId, index, name);
+    }
+
+    setTodoNotes(folderId, listId, index, notes) {
+        return this._call("SetTodoNotes", folderId, listId, index, notes);
     }
 
     /** Resolves to true when this made every todo of the project done. */

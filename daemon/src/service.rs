@@ -171,6 +171,20 @@ impl TodoService {
         .await
     }
 
+    async fn set_todo_notes(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        list_id: String,
+        index: u32,
+        notes: String,
+    ) -> fdo::Result<bool> {
+        self.update(&emitter, move |workspace| {
+            workspace.set_todo_notes(&folder_id, &list_id, index as usize, &notes)
+        })
+        .await
+    }
+
     /// Returns true when this toggle completed the whole project.
     async fn toggle_todo(
         &self,
