@@ -228,8 +228,8 @@ export class TodoListManager {
 
     /**
      * Flip a todo's done state.
-     * Returns true when this made every todo of the project done, in which
-     * case the project is marked completed. Unchecking a todo reactivates a
+     * Returns true when this made every todo of the project done; completing
+     * the project is then up to the user. Unchecking a todo reactivates a
      * completed project.
      */
     toggleTodo(folderId, listId, index) {
@@ -240,17 +240,12 @@ export class TodoListManager {
             return false;
         }
         todo.isDone = !todo.isDone;
-        let justCompleted = false;
         if (!todo.isDone) {
             folder.completed = false;
         }
-        else if (!folder.completed && undoneCount(folder) === 0) {
-            // todoCount > 0 is implied: the todo we just checked exists
-            folder.completed = true;
-            justCompleted = true;
-        }
         this._write(data);
-        return justCompleted;
+        // todoCount > 0 is implied: the todo we just checked exists
+        return todo.isDone && !folder.completed && undoneCount(folder) === 0;
     }
 
     /** Focused todo is kept at the top of its list; only one per list. */

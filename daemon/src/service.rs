@@ -185,7 +185,7 @@ impl TodoService {
         .await
     }
 
-    /// Returns true when this toggle completed the whole project.
+    /// Returns true when this toggle left every todo of the project done.
     async fn toggle_todo(
         &self,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,

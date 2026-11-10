@@ -1,6 +1,6 @@
 {
   "name": "OrganizedTodo",
-  "description": "Todo list for the GNOME panel organized as projects, lists and tasks, with automatic project completion. Derived from Todoit by wassimbj.",
+  "description": "Todo list for the GNOME panel organized as projects, lists and tasks, with markdown and per-task notes. Finished projects are archived with one click. Derived from Todoit by wassimbj.",
   "uuid": "organizedtodo@gabrielsmash.github.io",
   "settings-schema": "org.gnome.shell.extensions.organizedtodo",
   "shell-version": ["45", "46", "47", "48", "49", "50"],

@@ -9,7 +9,7 @@ import * as PanelMenu from "resource:///org/gnome/shell/ui/panelMenu.js";
 import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as DND from "resource:///org/gnome/shell/ui/dnd.js";
 import { TodoClient, undoneCount, todoCount } from "./client.js";
-import { markdownToMarkup, markdownToPlain, firstLink, noteBlocks } from "./markdown.js";
+import { markdownToMarkup, firstLink, noteBlocks } from "./markdown.js";
 import { isEmpty } from "./utils.js";
 
 const MENU_WIDTH = 440;
@@ -507,7 +507,14 @@ export default class TodoListExtension extends Extension {
             return;
         }
         for (const folder of active) {
-            this._content.add_child(this._folderRow(folder));
+            const extra = [];
+            if (todoCount(folder) > 0 && undoneCount(folder) === 0) {
+                extra.push(this._pillButton(_("Complete"), () => {
+                    this._send(this._client.setFolderCompleted(folder.id, true));
+                    this._render();
+                }, "organizedtodo-accent-btn"));
+            }
+            this._content.add_child(this._folderRow(folder, extra));
         }
     }
 
@@ -937,10 +944,9 @@ export default class TodoListExtension extends Extension {
         });
         check.connect("clicked", async () => {
             this._pulse = { listId, index };
-            const folderName = this._client.getFolder(folderId)?.name ?? "";
-            let completedProject;
+            let allDone;
             try {
-                completedProject = await this._client.toggleTodo(folderId, listId, index);
+                allDone = await this._client.toggleTodo(folderId, listId, index);
             }
             catch (e) {
                 console.error(`organizedtodo: daemon call failed: ${e}`);
@@ -948,9 +954,8 @@ export default class TodoListExtension extends Extension {
                 return;
             }
             // The extension may have been disabled while waiting for the daemon
-            if (completedProject && this._client) {
-                // Notifications take no markup: show the name without the markdown markers
-                Main.notify(_("Projeto concluído"), markdownToPlain(folderName));
+            if (allDone && this._client) {
+                // Completing is up to the user: the project row offers it
                 this._navigate({ screen: SCREEN.FOLDERS });
             }
         });

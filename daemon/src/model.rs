@@ -241,8 +241,8 @@ impl Workspace {
     }
 
     /// Flip a todo's done state.
-    /// Returns true when this made every todo of the project done, in which
-    /// case the project is marked completed. Unchecking a todo reactivates a
+    /// Returns true when this made every todo of the project done; completing
+    /// the project is then up to the user. Unchecking a todo reactivates a
     /// completed project.
     pub fn toggle_todo(&mut self, folder_id: &str, list_id: &str, index: usize) -> bool {
         let Some(folder) = self.folder_mut(folder_id) else {
@@ -261,11 +261,7 @@ impl Workspace {
             folder.completed = false;
             return false;
         }
-        if folder.completed || folder.undone_count() > 0 {
-            return false;
-        }
-        folder.completed = true;
-        true
+        !folder.completed && folder.undone_count() == 0
     }
 
     /// Focused todo is kept at the top of its list; only one per list.
@@ -432,11 +428,13 @@ mod tests {
     }
 
     #[test]
-    fn toggle_completes_and_reactivates_folder() {
+    fn toggle_reports_all_done_without_completing_folder() {
         let mut workspace = sample();
         assert!(!workspace.toggle_todo("f1", "l1", 1));
         assert!(workspace.toggle_todo("f1", "l2", 0));
-        assert!(workspace.folder("f1").unwrap().completed);
+        assert!(!workspace.folder("f1").unwrap().completed);
+        // Completing is the user's choice; unchecking a todo still reactivates
+        assert!(workspace.set_folder_completed("f1", true));
         assert!(!workspace.toggle_todo("f1", "l2", 0));
         assert!(!workspace.folder("f1").unwrap().completed);
         assert!(!workspace.toggle_todo("f1", "l2", 9));

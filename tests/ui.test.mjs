@@ -65,6 +65,7 @@ await t("create project from the bottom input", async () => {
     assert.deepEqual(rowTitles(), ["Geral", "Projeto A"]);
     assert.equal(ext._input.text, "");
     assert.equal(globalThis.__focus, ext._input);
+    assert.equal(pill(rows()[1], "Complete"), undefined); // no todos: nothing to complete
     await type("   "); // blank ignored
     assert.equal(rowTitles().length, 2);
 });
@@ -97,7 +98,7 @@ await t("back navigation goes list -> lists -> projects", async () => {
     assert.equal(btnByIcon(ext._header, "go-previous-symbolic").length, 0);
 });
 
-await t("auto-complete: checking the last pending todo returns to Projetos and moves project to Concluídos", async () => {
+await t("all done: checking the last pending todo returns to Projetos and offers Complete", async () => {
     await click(mainBtn(rows()[1])); // Projeto A
     await click(mainBtn(rows()[1])); // Lista de Fixes
     await type("fix1");
@@ -109,8 +110,26 @@ await t("auto-complete: checking the last pending todo returns to Projetos and m
     assert.equal(headerTitle(), "Lista de features"); // not yet
     await click(checks()[1]);                                // last one
     assert.equal(headerTitle(), "Projetos");           // jumped back
-    assert.deepEqual(rowTitles(), ["Geral"]);          // Projeto A left the active list
-    assert.deepEqual(globalThis.__notes.at(-1), ["Projeto concluído", "Projeto A"]);
+    assert.deepEqual(rowTitles(), ["Geral", "Projeto A"]); // still active: completing is the user's choice
+    assert.ok(pill(rows()[1], "Complete"));
+    assert.equal(pill(rows()[0], "Complete"), undefined); // Geral still has a pending todo
+    assert.equal(pill(ext._header, "Concluídos · 1"), undefined);
+    assert.equal(globalThis.__notes.length, 0);
+});
+
+await t("a new todo hides Complete; clicking Complete moves the project to Concluídos", async () => {
+    await click(mainBtn(rows()[1])); // Projeto A
+    await click(mainBtn(rows()[0])); // Lista de features
+    await type("polish");
+    await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
+    await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
+    assert.equal(pill(rows()[1], "Complete"), undefined);
+    await click(mainBtn(rows()[1]));
+    await click(mainBtn(rows()[0]));
+    await click(checks()[2]); // polish: all done again
+    assert.equal(headerTitle(), "Projetos");
+    await click(pill(rows()[1], "Complete"));
+    assert.deepEqual(rowTitles(), ["Geral"]);
     assert.ok(pill(ext._header, "Concluídos · 1"));
 });
 
@@ -304,8 +323,9 @@ await t("names are drawn as markdown; the stored text stays as typed", async () 
     await type("> nota");
     const label = findAll(ext._content, (x) => hasClass(x, "organizedtodo-todo-label"))[0];
     assert.equal(label.clutterText.markup, `<span style="italic" fgalpha="70%">▎ nota</span>`);
-    await click(checks()[0]); // last pending todo: the project completes
-    assert.deepEqual(globalThis.__notes.at(-1), ["Projeto concluído", "Big x"]); // no markers in notifications
+    await click(checks()[0]); // last pending todo: back to Projetos, the project offers Complete
+    assert.equal(headerTitle(), "Projetos");
+    assert.ok(pill(rows()[0], "Complete"));
 });
 
 await t("clicking a name with a link opens it and closes the menu; the row does not react", async () => {
