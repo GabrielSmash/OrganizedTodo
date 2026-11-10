@@ -47,9 +47,9 @@ const DEPTH = {
 
 // A function, not a constant: gettext needs the extension instance, which does not exist at import time
 const inputHint = (screen) => ({
-    [SCREEN.FOLDERS]: _("Novo projeto..."),
-    [SCREEN.LISTS]: _("Nova lista..."),
-    [SCREEN.TODOS]: _("Nova tarefa..."),
+    [SCREEN.FOLDERS]: _("New project..."),
+    [SCREEN.LISTS]: _("New list..."),
+    [SCREEN.TODOS]: _("New task..."),
     [SCREEN.COMPLETED]: "",
     [SCREEN.NOTES]: "",
 }[screen]);
@@ -494,16 +494,16 @@ export default class TodoListExtension extends Extension {
         const completed = this._client.getFolders(true);
         const actions = [];
         if (completed.length) {
-            actions.push(this._pillButton(`${_("Concluídos")} · ${completed.length}`, () => this._navigate({ screen: SCREEN.COMPLETED })));
+            actions.push(this._pillButton(`${_("Completed")} · ${completed.length}`, () => this._navigate({ screen: SCREEN.COMPLETED })));
         }
         const pending = active.reduce((total, folder) => total + undoneCount(folder), 0);
         this._buildHeader({
-            title: _("Projetos"),
-            subtitle: plural(pending, _("pendente"), _("pendentes")),
+            title: _("Projects"),
+            subtitle: plural(pending, _("pending"), _("pending")),
             actions,
         });
         if (isEmpty(active)) {
-            this._emptyState(_("Nenhum projeto ainda"), _("Crie o primeiro no campo abaixo"));
+            this._emptyState(_("No projects yet"), _("Create one in the field below"));
             return;
         }
         for (const folder of active) {
@@ -521,12 +521,12 @@ export default class TodoListExtension extends Extension {
     _renderCompleted() {
         const folders = this._client.getFolders(true);
         this._buildHeader({
-            title: _("Concluídos"),
-            subtitle: plural(folders.length, _("projeto"), _("projetos")),
+            title: _("Completed"),
+            subtitle: plural(folders.length, _("project"), _("projects")),
             onBack: () => this._navigate({ screen: SCREEN.FOLDERS }),
         });
         for (const folder of folders) {
-            const reactivate = this._pillButton(_("Reativar"), () => {
+            const reactivate = this._pillButton(_("Reactivate"), () => {
                 this._send(this._client.setFolderCompleted(folder.id, false));
                 this._render();
             });
@@ -537,20 +537,20 @@ export default class TodoListExtension extends Extension {
     _renderLists(folder) {
         const actions = [];
         if (folder.completed) {
-            actions.push(this._pillButton(_("Reativar"), () => {
+            actions.push(this._pillButton(_("Reactivate"), () => {
                 this._send(this._client.setFolderCompleted(folder.id, false));
                 this._render();
             }, "organizedtodo-accent-btn"));
         }
-        const status = folder.completed ? ` · ${_("concluído")}` : "";
+        const status = folder.completed ? ` · ${_("completed")}` : "";
         this._buildHeader({
             title: folder.name,
-            subtitle: `${plural(folder.lists.length, _("lista"), _("listas"))} · ${plural(undoneCount(folder), _("pendente"), _("pendentes"))}${status}`,
+            subtitle: `${plural(folder.lists.length, _("list"), _("lists"))} · ${plural(undoneCount(folder), _("pending"), _("pending"))}${status}`,
             onBack: () => this._navigate({ screen: folder.completed ? SCREEN.COMPLETED : SCREEN.FOLDERS }),
             actions,
         });
         if (isEmpty(folder.lists)) {
-            this._emptyState(_("Nenhuma lista ainda"), _("Crie a primeira no campo abaixo"));
+            this._emptyState(_("No lists yet"), _("Create one in the field below"));
             return;
         }
         for (const list of folder.lists) {
@@ -558,7 +558,7 @@ export default class TodoListExtension extends Extension {
                 kind: "list",
                 id: list.id,
                 title: list.name,
-                meta: plural(todoCount(list), _("tarefa"), _("tarefas")),
+                meta: plural(todoCount(list), _("task"), _("tasks")),
                 badge: undoneCount(list),
                 hasContent: todoCount(list) > 0,
                 onOpen: () => this._navigate({ screen: SCREEN.TODOS, folderId: folder.id, listId: list.id }),
@@ -570,8 +570,8 @@ export default class TodoListExtension extends Extension {
 
     /** The daemon is missing or the stored data is unreadable: nothing can be shown or changed. */
     _renderError() {
-        this._buildHeader({ title: _("Projetos") });
-        this._emptyState(_("Não foi possível carregar as tarefas"), _("Veja os detalhes com: journalctl --user -g organizedtodo"));
+        this._buildHeader({ title: _("Projects") });
+        this._emptyState(_("Could not load the tasks"), _("See the details with: journalctl --user -g organizedtodo"));
         this._footer.visible = false;
     }
 
@@ -582,7 +582,7 @@ export default class TodoListExtension extends Extension {
             onBack: () => this._navigate({ screen: SCREEN.LISTS, folderId: folder.id }),
         });
         if (isEmpty(list.todos)) {
-            this._emptyState(_("✅ Nada a fazer"), _("Adicione uma tarefa no campo abaixo"));
+            this._emptyState(_("✅ Nothing to do"), _("Add a task in the field below"));
             return;
         }
         list.todos.forEach((task, index) => {
@@ -600,7 +600,7 @@ export default class TodoListExtension extends Extension {
             this._render();
         };
         const action = this._editingNotes
-            ? this._pillButton(_("Salvar"), save, "organizedtodo-accent-btn")
+            ? this._pillButton(_("Save"), save, "organizedtodo-accent-btn")
             : this._iconButton("document-edit-symbolic", "", () => {
                 this._editingNotes = { draft: todo.notes ?? "" };
                 this._render();
@@ -618,7 +618,7 @@ export default class TodoListExtension extends Extension {
             return;
         }
         if (!todo.notes) {
-            this._emptyState(_("📝 Sem anotações"), _("Use o lápis para escrever; aceita markdown"));
+            this._emptyState(_("📝 No notes"), _("Use the pencil to write; markdown works"));
             return;
         }
         for (const { markup, link, code } of noteBlocks(todo.notes)) {
@@ -634,7 +634,7 @@ export default class TodoListExtension extends Extension {
     _notesEntry(onSave) {
         const entry = new St.Entry({
             text: this._editingNotes.draft,
-            hint_text: _("Escreva em markdown..."),
+            hint_text: _("Write in markdown..."),
             style_class: "organizedtodo-input",
             can_focus: true,
             x_expand: true,
@@ -792,7 +792,7 @@ export default class TodoListExtension extends Extension {
     _deleteButton(key, needsConfirm, onDelete) {
         const armed = this._pendingDelete === key;
         const button = armed
-            ? this._pillButton(_("Excluir?"), () => { }, "organizedtodo-danger-btn")
+            ? this._pillButton(_("Delete?"), () => { }, "organizedtodo-danger-btn")
             : this._iconButton("edit-delete-symbolic", "organizedtodo-delete-btn", () => { });
         button.connect("clicked", () => {
             if (needsConfirm && !armed) {
@@ -841,7 +841,7 @@ export default class TodoListExtension extends Extension {
             kind: "folder",
             id: folder.id,
             title: folder.name,
-            meta: `${plural(folder.lists.length, _("lista"), _("listas"))} · ${plural(todoCount(folder), _("tarefa"), _("tarefas"))}`,
+            meta: `${plural(folder.lists.length, _("list"), _("lists"))} · ${plural(todoCount(folder), _("task"), _("tasks"))}`,
             badge: folder.completed ? 0 : undoneCount(folder),
             hasContent: folder.lists.length > 0,
             extra,

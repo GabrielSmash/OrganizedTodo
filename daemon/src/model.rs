@@ -419,10 +419,10 @@ mod tests {
     #[test]
     fn notes_are_saved_cleared_and_only_written_when_present() {
         let mut workspace = sample();
-        assert!(workspace.set_todo_notes("f1", "l1", 0, "# Plano\n- passo\n\n"));
+        assert!(workspace.set_todo_notes("f1", "l1", 0, "# Plan\n- step\n\n"));
         assert!(!workspace.set_todo_notes("f1", "l1", 9, "x"));
         let raw = serde_json::to_string(&workspace).unwrap();
-        assert!(raw.contains(r##""notes":"# Plano\n- passo""##));
+        assert!(raw.contains(r##""notes":"# Plan\n- step""##));
         assert!(workspace.set_todo_notes("f1", "l1", 0, ""));
         assert!(!serde_json::to_string(&workspace).unwrap().contains("notes"));
     }

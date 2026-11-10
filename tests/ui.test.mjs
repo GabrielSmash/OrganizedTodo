@@ -7,12 +7,12 @@ register(new URL("./helpers/hooks.mjs", import.meta.url));
 const { findAll, hasClass } = await import(new URL("./helpers/stubs.mjs", import.meta.url).href);
 const { default: Ext } = await import(new URL("../extension.js", import.meta.url).href);
 
-// ---- fake settings, seeded with one project: Geral / Tarefas = [alpha (pending), beta (done)]
+// ---- fake settings, seeded with one project: General / Tasks = [alpha (pending), beta (done)]
 const store = {
     workspace: JSON.stringify({
         folders: [{
-            id: "f0", name: "Geral", completed: false,
-            lists: [{ id: "l0", name: "Tarefas", todos: [{ name: "alpha", isDone: false }, { name: "beta", isDone: true }] }],
+            id: "f0", name: "General", completed: false,
+            lists: [{ id: "l0", name: "Tasks", todos: [{ name: "alpha", isDone: false }, { name: "beta", isDone: true }] }],
         }],
     }),
 };
@@ -43,10 +43,10 @@ const checks = () => findAll(ext._content, (x) => hasClass(x, "organizedtodo-che
 let n = 0;
 const t = async (name, fn) => { await fn(); n++; console.log("ok -", name); };
 
-await t("enable renders Projetos with the stored project", async () => {
-    assert.equal(headerTitle(), "Projetos");
-    assert.deepEqual(rowTitles(), ["Geral"]);
-    assert.equal(ext._input.hint_text, "Novo projeto...");
+await t("enable renders Projects with the stored project", async () => {
+    assert.equal(headerTitle(), "Projects");
+    assert.deepEqual(rowTitles(), ["General"]);
+    assert.equal(ext._input.hint_text, "New project...");
     assert.equal(ext._footer.visible, true);
     assert.equal(globalThis.__bound, "open-organizedtodo");
 });
@@ -61,8 +61,8 @@ await t("panel button shows only the custom icon (no label, no counter)", async 
 });
 
 await t("create project from the bottom input", async () => {
-    await type("Projeto A");
-    assert.deepEqual(rowTitles(), ["Geral", "Projeto A"]);
+    await type("Project A");
+    assert.deepEqual(rowTitles(), ["General", "Project A"]);
     assert.equal(ext._input.text, "");
     assert.equal(globalThis.__focus, ext._input);
     assert.equal(pill(rows()[1], "Complete"), undefined); // no todos: nothing to complete
@@ -72,19 +72,19 @@ await t("create project from the bottom input", async () => {
 
 await t("open project -> lists screen; create two lists", async () => {
     await click(mainBtn(rows()[1]));
-    assert.equal(headerTitle(), "Projeto A");
-    assert.equal(ext._input.hint_text, "Nova lista...");
-    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "Nenhuma lista ainda");
-    await type("Lista de features");
-    await type("Lista de Fixes");
-    assert.deepEqual(rowTitles(), ["Lista de features", "Lista de Fixes"]);
+    assert.equal(headerTitle(), "Project A");
+    assert.equal(ext._input.hint_text, "New list...");
+    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "No lists yet");
+    await type("Features");
+    await type("Fixes");
+    assert.deepEqual(rowTitles(), ["Features", "Fixes"]);
 });
 
 await t("open list -> todos screen; add todos", async () => {
     await click(mainBtn(rows()[0]));
-    assert.equal(headerTitle(), "Lista de features");
-    assert.equal(headerSub(), "Projeto A");
-    assert.equal(ext._input.hint_text, "Nova tarefa...");
+    assert.equal(headerTitle(), "Features");
+    assert.equal(headerSub(), "Project A");
+    assert.equal(ext._input.hint_text, "New task...");
     await type("login");
     await type("export");
     assert.deepEqual(todoLabels(), ["login", "export"]);
@@ -92,34 +92,34 @@ await t("open list -> todos screen; add todos", async () => {
 
 await t("back navigation goes list -> lists -> projects", async () => {
     await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
-    assert.equal(headerTitle(), "Projeto A");
+    assert.equal(headerTitle(), "Project A");
     await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
-    assert.equal(headerTitle(), "Projetos");
+    assert.equal(headerTitle(), "Projects");
     assert.equal(btnByIcon(ext._header, "go-previous-symbolic").length, 0);
 });
 
-await t("all done: checking the last pending todo returns to Projetos and offers Complete", async () => {
-    await click(mainBtn(rows()[1])); // Projeto A
-    await click(mainBtn(rows()[1])); // Lista de Fixes
+await t("all done: checking the last pending todo returns to Projects and offers Complete", async () => {
+    await click(mainBtn(rows()[1])); // Project A
+    await click(mainBtn(rows()[1])); // Fixes
     await type("fix1");
     await click(checks()[0]); // fix1 done, features still pending
-    assert.equal(headerTitle(), "Lista de Fixes");
+    assert.equal(headerTitle(), "Fixes");
     await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
     await click(mainBtn(rows()[0]));
     await click(checks()[0]);
-    assert.equal(headerTitle(), "Lista de features"); // not yet
+    assert.equal(headerTitle(), "Features"); // not yet
     await click(checks()[1]);                                // last one
-    assert.equal(headerTitle(), "Projetos");           // jumped back
-    assert.deepEqual(rowTitles(), ["Geral", "Projeto A"]); // still active: completing is the user's choice
+    assert.equal(headerTitle(), "Projects");           // jumped back
+    assert.deepEqual(rowTitles(), ["General", "Project A"]); // still active: completing is the user's choice
     assert.ok(pill(rows()[1], "Complete"));
-    assert.equal(pill(rows()[0], "Complete"), undefined); // Geral still has a pending todo
-    assert.equal(pill(ext._header, "Concluídos · 1"), undefined);
+    assert.equal(pill(rows()[0], "Complete"), undefined); // General still has a pending todo
+    assert.equal(pill(ext._header, "Completed · 1"), undefined);
     assert.equal(globalThis.__notes.length, 0);
 });
 
-await t("a new todo hides Complete; clicking Complete moves the project to Concluídos", async () => {
-    await click(mainBtn(rows()[1])); // Projeto A
-    await click(mainBtn(rows()[0])); // Lista de features
+await t("a new todo hides Complete; clicking Complete moves the project to Completed", async () => {
+    await click(mainBtn(rows()[1])); // Project A
+    await click(mainBtn(rows()[0])); // Features
     await type("polish");
     await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
     await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
@@ -127,52 +127,52 @@ await t("a new todo hides Complete; clicking Complete moves the project to Concl
     await click(mainBtn(rows()[1]));
     await click(mainBtn(rows()[0]));
     await click(checks()[2]); // polish: all done again
-    assert.equal(headerTitle(), "Projetos");
+    assert.equal(headerTitle(), "Projects");
     await click(pill(rows()[1], "Complete"));
-    assert.deepEqual(rowTitles(), ["Geral"]);
-    assert.ok(pill(ext._header, "Concluídos · 1"));
+    assert.deepEqual(rowTitles(), ["General"]);
+    assert.ok(pill(ext._header, "Completed · 1"));
 });
 
-await t("Concluídos screen lists it, project is accessible, reactivation works", async () => {
-    await click(pill(ext._header, "Concluídos · 1"));
-    assert.equal(headerTitle(), "Concluídos");
-    assert.deepEqual(rowTitles(), ["Projeto A"]);
+await t("Completed screen lists it, project is accessible, reactivation works", async () => {
+    await click(pill(ext._header, "Completed · 1"));
+    assert.equal(headerTitle(), "Completed");
+    assert.deepEqual(rowTitles(), ["Project A"]);
     assert.equal(ext._footer.visible, false);
-    // open it: header offers Reativar, back goes to Concluídos
+    // open it: header offers Reactivate, back goes to Completed
     await click(mainBtn(rows()[0]));
-    assert.equal(headerTitle(), "Projeto A");
-    assert.ok(pill(ext._header, "Reativar"));
-    assert.match(headerSub(), /concluído/);
+    assert.equal(headerTitle(), "Project A");
+    assert.ok(pill(ext._header, "Reactivate"));
+    assert.match(headerSub(), /completed/);
     await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
-    assert.equal(headerTitle(), "Concluídos");
-    // reactivate from the row; no completed left -> falls back to Projetos
-    await click(pill(rows()[0], "Reativar"));
-    assert.equal(headerTitle(), "Projetos");
-    assert.deepEqual(rowTitles(), ["Geral", "Projeto A"]);
+    assert.equal(headerTitle(), "Completed");
+    // reactivate from the row; no completed left -> falls back to Projects
+    await click(pill(rows()[0], "Reactivate"));
+    assert.equal(headerTitle(), "Projects");
+    assert.deepEqual(rowTitles(), ["General", "Project A"]);
     assert.equal(ext._footer.visible, true);
 });
 
 await t("unchecking in a completed project reactivates it", async () => {
-    const f = ext._client.getFolders(false).find((x) => x.name === "Projeto A");
+    const f = ext._client.getFolders(false).find((x) => x.name === "Project A");
     await ext._client.setFolderCompleted(f.id, true);
     ext._navigate({ screen: "lists", folderId: f.id });
-    assert.ok(pill(ext._header, "Reativar"));
+    assert.ok(pill(ext._header, "Reactivate"));
     await click(mainBtn(rows()[0]));
     await click(checks()[0]); // uncheck
     assert.equal(ext._client.getFolder(f.id).completed, false);
     ext._navigate({ screen: "folders" });
-    assert.deepEqual(rowTitles(), ["Geral", "Projeto A"]);
+    assert.deepEqual(rowTitles(), ["General", "Project A"]);
 });
 
 await t("inline rename: edit -> entry focused -> Enter commits", async () => {
     await click(btnByIcon(rows()[1], "document-edit-symbolic")[0]);
     const entry = entries()[0];
     assert.ok(entry);
-    assert.equal(entry.text, "Projeto A");
+    assert.equal(entry.text, "Project A");
     assert.equal(globalThis.__focus, entry);
-    entry.text = "  Projeto Alfa ";
+    entry.text = "  Project Alpha ";
     await commit(entry);
-    assert.deepEqual(rowTitles(), ["Geral", "Projeto Alfa"]);
+    assert.deepEqual(rowTitles(), ["General", "Project Alpha"]);
     assert.equal(ext._renaming, null);
 });
 
@@ -182,39 +182,39 @@ await t("inline rename: Escape cancels and is swallowed; blank commit keeps old 
     entry.text = "nope";
     const res = entry.clutterText.emit("key-press-event", { get_key_symbol: () => 65307 });
     assert.deepEqual(res, [true]); // EVENT_STOP
-    assert.deepEqual(rowTitles(), ["Geral", "Projeto Alfa"]);
+    assert.deepEqual(rowTitles(), ["General", "Project Alpha"]);
     await click(btnByIcon(rows()[1], "document-edit-symbolic")[0]);
     entry = entries()[0];
     entry.text = "   ";
     await commit(entry);
-    assert.deepEqual(rowTitles(), ["Geral", "Projeto Alfa"]);
+    assert.deepEqual(rowTitles(), ["General", "Project Alpha"]);
     assert.deepEqual(entry.clutterText.emit("key-press-event", { get_key_symbol: () => 97 }), [false]);
 });
 
 await t("delete needs confirmation when it has content, immediate when empty", async () => {
     await click(btnByIcon(rows()[1], "edit-delete-symbolic")[0]);
-    assert.deepEqual(rowTitles(), ["Geral", "Projeto Alfa"]);
-    assert.ok(pill(rows()[1], "Excluir?"));
+    assert.deepEqual(rowTitles(), ["General", "Project Alpha"]);
+    assert.ok(pill(rows()[1], "Delete?"));
     ext._navigate({ screen: "folders" }); // navigating elsewhere disarms
-    assert.equal(pill(rows()[1], "Excluir?"), undefined);
+    assert.equal(pill(rows()[1], "Delete?"), undefined);
     await click(btnByIcon(rows()[1], "edit-delete-symbolic")[0]);
-    await click(pill(rows()[1], "Excluir?"));
-    assert.deepEqual(rowTitles(), ["Geral"]);
-    await type("Vazio"); // empty project deletes at once
+    await click(pill(rows()[1], "Delete?"));
+    assert.deepEqual(rowTitles(), ["General"]);
+    await type("Empty"); // empty project deletes at once
     await click(btnByIcon(rows()[1], "edit-delete-symbolic")[0]);
-    assert.deepEqual(rowTitles(), ["Geral"]);
+    assert.deepEqual(rowTitles(), ["General"]);
 });
 
 await t("menu closing disarms a pending delete", async () => {
     await click(btnByIcon(rows()[0], "edit-delete-symbolic")[0]);
-    assert.ok(pill(rows()[0], "Excluir?"));
+    assert.ok(pill(rows()[0], "Delete?"));
     ext._button.menu.emit("open-state-changed", false);
-    assert.equal(pill(rows()[0], "Excluir?"), undefined);
+    assert.equal(pill(rows()[0], "Delete?"), undefined);
 });
 
 await t("todo row: focus moves to top, no copy button, markup escaping, remove", async () => {
-    await click(mainBtn(rows()[0]));         // Geral
-    await click(mainBtn(rows()[0]));         // Tarefas (alpha, beta)
+    await click(mainBtn(rows()[0]));         // General
+    await click(mainBtn(rows()[0]));         // Tasks (alpha, beta)
     assert.deepEqual(todoLabels(), ["alpha", "beta"]);
     await type("a<b&c");
     assert.equal(todoLabels().length, 3);
@@ -289,25 +289,25 @@ await t("drag & drop reorder within a list; redraw deferred until drag-end", asy
     assert.equal(r[1]._delegate.handleDragOver(r[1]._delegate), 0);
 });
 
-await t("view pointing to a deleted project falls back to Projetos", async () => {
+await t("view pointing to a deleted project falls back to Projects", async () => {
     await ext._client.removeFolder(ext._view.folderId);
     await flush();
-    assert.equal(headerTitle(), "Projetos");
+    assert.equal(headerTitle(), "Projects");
     assert.equal(ext._view.screen, "folders");
 });
 
 await t("load failure shows a notice without the input; reopening the menu retries", async () => {
     ext._client._error = "daemon unreachable";
     ext._render();
-    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "Não foi possível carregar as tarefas");
+    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "Could not load the tasks");
     assert.equal(ext._footer.visible, false);
     assert.equal(rows().length, 0);
     ext._button.menu.emit("open-state-changed", true);
     await flush();
     assert.equal(ext._client.error, null);
-    assert.equal(headerTitle(), "Projetos");
+    assert.equal(headerTitle(), "Projects");
     // the previous test deleted the last project: back to the normal empty state
-    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "Nenhum projeto ainda");
+    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "No projects yet");
     assert.equal(ext._footer.visible, true);
 });
 
@@ -320,18 +320,18 @@ await t("names are drawn as markdown; the stored text stays as typed", async () 
     assert.match(findAll(ext._header, (x) => hasClass(x, "organizedtodo-title"))[0].clutterText.markup, /<b>Big<\/b>/);
     await type("L");
     await click(mainBtn(rows()[0]));
-    await type("> nota");
+    await type("> note");
     const label = findAll(ext._content, (x) => hasClass(x, "organizedtodo-todo-label"))[0];
-    assert.equal(label.clutterText.markup, `<span style="italic" fgalpha="70%">▎ nota</span>`);
-    await click(checks()[0]); // last pending todo: back to Projetos, the project offers Complete
-    assert.equal(headerTitle(), "Projetos");
+    assert.equal(label.clutterText.markup, `<span style="italic" fgalpha="70%">▎ note</span>`);
+    await click(checks()[0]); // last pending todo: back to Projects, the project offers Complete
+    assert.equal(headerTitle(), "Projects");
     assert.ok(pill(rows()[0], "Complete"));
 });
 
 await t("clicking a name with a link opens it and closes the menu; the row does not react", async () => {
     let closed = 0;
     ext._button.menu.close = () => closed++;
-    await type("ler [docs](https://gnome.org) e [x](file:///etc)");
+    await type("read [docs](https://gnome.org) and [x](file:///etc)");
     const row = rows().at(-1);
     const label = findAll(row, (x) => hasClass(x, "organizedtodo-row-title"))[0];
     assert.equal(label.reactive, true);
@@ -339,8 +339,8 @@ await t("clicking a name with a link opens it and closes the menu; the row does 
     assert.deepEqual(label.emit("button-release-event"), [true]);
     assert.deepEqual(globalThis.__opened, ["https://gnome.org"]);
     assert.equal(closed, 1);
-    assert.equal(headerTitle(), "Projetos"); // did not open the project
-    await type("sem link");
+    assert.equal(headerTitle(), "Projects"); // did not open the project
+    await type("no link");
     assert.notEqual(findAll(rows().at(-1), (x) => hasClass(x, "organizedtodo-row-title"))[0].reactive, true);
 });
 
@@ -368,7 +368,7 @@ await t("animations: menu grows from the icon, screens slide, new rows fade in, 
 
     // only the row that was not there before fades in
     const before = rows().length;
-    await type("Nova");
+    await type("New");
     const all = rows();
     assert.equal(all.length, before + 1);
     assert.deepEqual(all.at(-1).eased?.[0].from, { opacity: 0, translation_y: -6 });
@@ -378,8 +378,8 @@ await t("animations: menu grows from the icon, screens slide, new rows fade in, 
     await click(mainBtn(all.at(-1)));
     await type("L");
     await click(mainBtn(rows()[0]));
-    await type("um");
-    await type("dois");
+    await type("one");
+    await type("two");
     await click(checks()[0]);
     const check = checks()[0];
     assert.deepEqual(check.eased?.[0].from, { scale_x: 1.35, scale_y: 1.35 });
@@ -419,7 +419,7 @@ const storedTodos = () => ext._client.getList(ext._view.folderId, ext._view.list
 
 await t("notes: the row button opens the todo's notes; written in markdown, drawn per line, code as a box", async () => {
     ext._navigate({ screen: "folders" });
-    await type("Notas");
+    await type("Notes");
     await click(mainBtn(rows().at(-1)));
     await type("L");
     await click(mainBtn(rows()[0]));
@@ -431,20 +431,20 @@ await t("notes: the row button opens the todo's notes; written in markdown, draw
     assert.match(findAll(ext._header, (x) => hasClass(x, "organizedtodo-title"))[0].clutterText.markup, /<b>a<\/b>/);
     assert.equal(headerSub(), "L");
     assert.equal(ext._footer.visible, false);
-    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "📝 Sem anotações");
+    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "📝 No notes");
 
     await click(btnByIcon(ext._header, "document-edit-symbolic")[0]);
     const entry = entries()[0];
     assert.equal(entry.text, "");
     assert.equal(globalThis.__focus, entry);
-    entry.text = "# Plano\nver www.a.com\n```py\ndef f():\n```\n\n";
+    entry.text = "# Plan\nsee www.a.com\n```py\ndef f():\n```\n\n";
     entry.clutterText.emit("text-changed");
     assert.deepEqual(press(entry, KEY.Return, CTRL), [true]); // Ctrl+Enter saves
     await flush();
     assert.equal(entries().length, 0);
-    assert.equal(storedTodos()[0].notes, "# Plano\nver www.a.com\n```py\ndef f():\n```");
+    assert.equal(storedTodos()[0].notes, "# Plan\nsee www.a.com\n```py\ndef f():\n```");
     const [title, link] = noteLines();
-    assert.equal(title.clutterText.markup, `<span weight="bold" size="x-large">Plano</span>`);
+    assert.equal(title.clutterText.markup, `<span weight="bold" size="x-large">Plan</span>`);
     assert.equal(link.reactive, true);
     link.emit("button-release-event");
     assert.equal(globalThis.__opened.at(-1), "https://www.a.com");
@@ -488,20 +488,20 @@ await t("notes editor: Enter keeps the indentation, Tab indents, Shift+Tab unind
 
 await t("notes: the draft survives redraws and closing the menu; saving empty clears", async () => {
     await click(btnByIcon(ext._header, "document-edit-symbolic")[0]);
-    entries()[0].text = "rascunho";
+    entries()[0].text = "draft";
     entries()[0].clutterText.emit("text-changed");
     ext._render(); // a Changed signal while typing
     ext._button.menu.emit("open-state-changed", false);
-    assert.equal(entries()[0].text, "rascunho");
-    await click(pill(ext._header, "Salvar"));
-    assert.equal(storedTodos()[1].notes, "rascunho");
+    assert.equal(entries()[0].text, "draft");
+    await click(pill(ext._header, "Save"));
+    assert.equal(storedTodos()[1].notes, "draft");
     await click(btnByIcon(ext._header, "document-edit-symbolic")[0]);
-    assert.equal(entries()[0].text, "rascunho");
+    assert.equal(entries()[0].text, "draft");
     entries()[0].text = "";
     entries()[0].clutterText.emit("text-changed");
-    await click(pill(ext._header, "Salvar"));
+    await click(pill(ext._header, "Save"));
     assert.equal(storedTodos()[1].notes, undefined);
-    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "📝 Sem anotações");
+    assert.equal(findAll(ext._content, (x) => hasClass(x, "organizedtodo-empty-title"))[0].text, "📝 No notes");
 });
 
 await t("notes of a todo that moved or was removed fall back to its list", async () => {

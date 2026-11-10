@@ -1,36 +1,34 @@
 # OrganizedTodo
 
-> A todo list for the GNOME top bar, organized as **projects → lists → tasks**, with automatic project completion. (Interface in Portuguese, pt-BR.)
+A todo list for the GNOME top bar, organized as **projects → lists → tasks**. When every task of a project is done, the project shows a **Complete** button, and you decide when to archive it.
 
-Uma lista de tarefas que fica na barra superior do GNOME, organizada em **projetos → listas → tarefas**. Quando todas as tarefas de um projeto são concluídas, o projeto é marcado como concluído automaticamente.
+Derived from [Todoit](https://github.com/wassimbj/todoit-gnome), by wassimbj (MIT). The data model, the screens and most of the code were rewritten. See [License and credits](#license-and-credits).
 
-Derivado do [Todoit](https://github.com/wassimbj/todoit-gnome), de wassimbj (MIT). O modelo de dados, as telas e a maior parte do código foram reescritos. Veja a seção [Licença e créditos](#licença-e-créditos).
+## Features
 
-## Recursos
+- **Screens with a back button:** Projects → Lists → Tasks → Notes of a task.
+- **One-click completion:** when you check the last pending task of a project (across all of its lists), you go back to Projects and the project shows **Complete**.
+- **Completed projects:** kept, viewable and can be reactivated.
+- **Inline editing:** rename projects, lists and tasks without opening another screen.
+- **Focus and order:** highlight a task (it is pinned to the top of its list) and drag to reorder.
+- **A single panel icon**, opened by clicking or with the `Alt+Shift+Space` shortcut.
+- **Notes per task:** free text for each task, with full markdown (headings, lists, checkboxes, colored code blocks).
+- **Formatting in names:** simple markdown in projects, lists and tasks; links open with one click.
+- **A notes editor made for code:** Tab indents, Shift+Tab unindents, Enter keeps the indentation.
+- **Animations:** the menu grows from the icon and shrinks back into it, screens slide, new rows fade in and checking a task sets off a small burst. They follow GNOME's reduce-animations setting.
 
-- **Telas com botão de voltar:** Projetos → Listas → Tarefas → Anotações de uma tarefa.
-- **Conclusão automática:** ao marcar a última tarefa pendente de um projeto (somando todas as listas dele), o projeto vira "concluído" e você volta para a tela de projetos.
-- **Concluídos:** ficam guardados, acessíveis e podem ser reativados.
-- **Edição no próprio lugar:** renomeie projetos, listas e tarefas sem abrir outra tela.
-- **Foco e ordem:** destaque uma tarefa (ela fixa no topo da lista) e arraste para reordenar.
-- **Só um ícone no painel**, aberto por clique ou pelo atalho `Alt+Shift+Espaço`.
-- **Anotações por tarefa:** um texto livre para cada tarefa, com markdown completo (títulos, listas, caixinhas, blocos de código coloridos).
-- **Formatação nos nomes:** markdown simples em projetos, listas e tarefas; links abrem com um clique.
-- **Editor de anotações para código:** Tab indenta, Shift+Tab desfaz, Enter mantém o recuo.
-- **Animações:** o menu sai do ícone e volta para ele, as telas deslizam, linhas novas aparecem suavemente e concluir uma tarefa solta uma pequena explosão. Respeitam a opção do GNOME de reduzir animações.
+## Requirements
 
-## Requisitos
+- GNOME Shell **45 to 50**. Tested only on **50**; other versions may behave differently.
+- To install from source: `git`, `make` and `glib-compile-schemas`
+  (Ubuntu/Debian: package `libglib2.0-bin`; Fedora: `glib2-devel`).
+- To build the daemon (the Rust backend): **Rust 1.92 or newer** (`cargo`, via [rustup](https://rustup.rs)),
+  `pkg-config` and the GLib headers (Ubuntu/Debian: `pkg-config libglib2.0-dev`; Fedora: `pkgconf glib2-devel`).
+- To build the zip (`make pack`): `zip`.
 
-- GNOME Shell **45 a 50**. Testado apenas no **50**; nas outras versões pode haver diferenças.
-- Para instalar a partir do código-fonte: `git`, `make` e `glib-compile-schemas`
-  (Ubuntu/Debian: pacote `libglib2.0-bin`; Fedora: `glib2-devel`).
-- Para compilar o daemon (o backend em Rust): **Rust 1.92 ou mais novo** (`cargo`, via [rustup](https://rustup.rs)),
-  `pkg-config` e os headers da GLib (Ubuntu/Debian: `pkg-config libglib2.0-dev`; Fedora: `pkgconf glib2-devel`).
-- Para gerar o zip (`make pack`): `zip`.
+## Installation
 
-## Instalação
-
-### A partir do código-fonte (recomendado)
+### From source (recommended)
 
 ```sh
 git clone https://github.com/GabrielSmash/OrganizedTodo.git
@@ -38,202 +36,205 @@ cd OrganizedTodo
 make install
 ```
 
-O `make install` faz duas coisas:
+`make install` does two things:
 
-1. Compila o schema e copia a extensão para
+1. Compiles the schema and copies the extension to
    `~/.local/share/gnome-shell/extensions/organizedtodo@gabrielsmash.github.io/`.
-2. Compila o **daemon** e o instala (`make install-daemon`):
-   - o binário em `~/.local/bin/organizedtodo-daemon`;
-   - o arquivo de ativação em `~/.local/share/dbus-1/services/io.github.gabrielsmash.OrganizedTodo.service`.
+2. Builds and installs the **daemon** (`make install-daemon`):
+   - the binary at `~/.local/bin/organizedtodo-daemon`;
+   - the activation file at `~/.local/share/dbus-1/services/io.github.gabrielsmash.OrganizedTodo.service`.
 
-Você não precisa iniciar o daemon: o D-Bus o inicia sozinho na primeira vez que a extensão o chama.
+You do not need to start the daemon: D-Bus starts it the first time the extension calls it.
 
-Se o repositório já estiver dentro da pasta de extensões (clonado direto em
-`~/.local/share/gnome-shell/extensions/organizedtodo@gabrielsmash.github.io`), rode só `make install-daemon`.
+If the repository is already inside the extensions folder (cloned straight into
+`~/.local/share/gnome-shell/extensions/organizedtodo@gabrielsmash.github.io`), run only `make install-daemon`.
 
-### A partir de um zip
+### From a zip
 
-Se alguém lhe enviou o arquivo `organizedtodo@gabrielsmash.github.io.shell-extension.zip`:
+If someone sent you the file `organizedtodo@gabrielsmash.github.io.shell-extension.zip`:
 
 ```sh
 gnome-extensions install --force organizedtodo@gabrielsmash.github.io.shell-extension.zip
 ```
 
-Para gerar esse zip a partir do código: `make pack`.
+To build that zip from the source: `make pack`.
 
-O zip contém **só a extensão**. O daemon precisa ser instalado a partir do código-fonte (`make install-daemon`);
-sem ele, o menu abre vazio e o erro aparece no log (`journalctl --user -g organizedtodo`).
+The zip contains **only the extension**. The daemon has to be installed from source (`make install-daemon`);
+without it, the menu opens empty and the error shows up in the log (`journalctl --user -g organizedtodo`).
 
-### Ativar
+### Enable
 
-No **Wayland** o GNOME só enxerga extensões novas depois de uma nova sessão:
+On **Wayland**, GNOME only sees new extensions after a new session:
 
-1. Saia da sessão e entre de novo (no X11 dá para recarregar com `Alt+F2`, `r`, Enter).
-2. Ative a extensão:
+1. Log out and back in (on X11 you can reload with `Alt+F2`, `r`, Enter).
+2. Enable the extension:
 
 ```sh
 gnome-extensions enable organizedtodo@gabrielsmash.github.io
 ```
 
-Se estiver com o **Todoit original** ativo, desative-o: os dois respondem a `Alt+Shift+Espaço`. Os dados são separados, e o OrganizedTodo **não** lê a lista do Todoit.
+If the **original Todoit** is enabled, disable it: both respond to `Alt+Shift+Space`. Their data is separate, and OrganizedTodo does **not** read Todoit's list.
 
-### Atualizar
+### Update
 
-Dentro da pasta do repositório: `git pull && make install`, e depois saia e entre na sessão (o GNOME guarda o código das extensões em cache).
+Inside the repository folder: `git pull && make install`, then log out and back in (GNOME caches extension code).
 
-Se o daemon já estiver rodando, ele continua com a versão antiga até ser encerrado. Sair da sessão já resolve;
-para trocar na hora: `pkill -x organizedtodo-d` (o D-Bus inicia a versão nova na próxima chamada).
+If the daemon is already running, it keeps the old version until it exits. Logging out takes care of that;
+to switch right away: `pkill -x organizedtodo-d` (D-Bus starts the new version on the next call).
 
-### Desinstalar
+### Uninstall
 
 ```sh
 gnome-extensions disable organizedtodo@gabrielsmash.github.io
 rm -rf ~/.local/share/gnome-shell/extensions/organizedtodo@gabrielsmash.github.io
 pkill -x organizedtodo-d
 rm -f ~/.local/bin/organizedtodo-daemon ~/.local/share/dbus-1/services/io.github.gabrielsmash.OrganizedTodo.service
-dconf reset -f /org/gnome/shell/extensions/organizedtodo/   # apaga também seus dados
+dconf reset -f /org/gnome/shell/extensions/organizedtodo/   # also deletes your data
 ```
 
-## Como usar
+## Usage
 
-### Abrir
+### Open
 
-Clique no ícone na barra superior, ou use **`Alt+Shift+Espaço`**. O atalho já deixa o cursor no campo de texto do rodapé.
+Click the icon in the top bar, or press **`Alt+Shift+Space`**. The shortcut puts the cursor in the text field at the bottom.
 
-### O campo do rodapé
+### The bottom field
 
-O campo de texto no rodapé cria **o que fizer sentido na tela em que você está**:
+The text field at the bottom creates **whatever makes sense on the current screen**:
 
-| Tela | O campo cria | Texto de dica |
+| Screen | The field creates | Hint text |
 |---|---|---|
-| Projetos | um projeto | `Novo projeto...` |
-| Listas (dentro de um projeto) | uma lista | `Nova lista...` |
-| Tarefas (dentro de uma lista) | uma tarefa | `Nova tarefa...` |
+| Projects | a project | `New project...` |
+| Lists (inside a project) | a list | `New list...` |
+| Tasks (inside a list) | a task | `New task...` |
 
-Digite e aperte **Enter**.
+Type and press **Enter**.
 
-### Passo a passo
+### Step by step
 
-1. Na tela **Projetos**, digite o nome de um projeto (por exemplo, `Projeto A`) e aperte Enter.
-2. Clique no projeto para entrar. Crie as listas, por exemplo `Features` e `Fixes`.
-3. Clique em uma lista para entrar e adicione as tarefas.
-4. Use a seta de **voltar** no topo para subir um nível.
+1. On the **Projects** screen, type a project name (for example, `Project A`) and press Enter.
+2. Click the project to open it. Create lists, for example `Features` and `Fixes`.
+3. Click a list to open it and add tasks.
+4. Use the **back** arrow at the top to go up one level.
 
-### Em cada linha
+### On each row
 
-**Projetos e listas** (clique na linha para abrir):
+**Projects and lists** (click the row to open it):
 
-| Botão | O que faz |
+| Button | What it does |
 |---|---|
-| Lápis | Renomeia no próprio lugar. **Enter** salva e **Esc** cancela. Nome vazio é ignorado. |
-| Lixeira | Exclui. Se o projeto ou a lista tem conteúdo, o botão vira **"Excluir?"** e pede um segundo clique. |
+| Pencil | Renames in place. **Enter** saves and **Esc** cancels. An empty name is ignored. |
+| Trash | Deletes. If the project or list has content, the button turns into **"Delete?"** and asks for a second click. |
+| Complete | Shows on a project when all of its tasks are done. Moves it to **Completed**. |
 
-A pílula azul ao lado do nome mostra quantas tarefas pendentes existem.
+The pill next to the name shows how many pending tasks there are.
 
-**Tarefas:**
+**Tasks:**
 
-| Controle | O que faz |
+| Control | What it does |
 |---|---|
-| Círculo à esquerda | Marca ou desmarca como concluída (o texto fica riscado). |
-| Documento | Abre as **anotações** da tarefa. Fica azul quando a tarefa tem anotação. |
-| Lápis | Edita o texto da tarefa. **Enter** salva e **Esc** cancela. |
-| Alvo | **Foco**: fixa a tarefa no topo da lista (uma por lista). Clique de novo para soltar. |
-| Lixeira | Exclui a tarefa, sem pedir confirmação. |
-| `=` à direita | Arraste para reordenar dentro da lista. |
+| Circle on the left | Checks or unchecks the task (the text is struck through). |
+| Document | Opens the task's **notes**. It is highlighted when the task has notes. |
+| Pencil | Edits the task's text. **Enter** saves and **Esc** cancels. |
+| Target | **Focus**: pins the task to the top of its list (one per list). Click again to release. |
+| Trash | Deletes the task, without asking. |
+| `=` on the right | Drag to reorder within the list. |
 
-### Conclusão automática
+### Completing a project
 
-- Ao marcar a **última tarefa pendente** de um projeto, considerando **todas as listas dele**, o projeto passa para **Concluídos**, aparece uma notificação e você volta para a tela de Projetos.
-- Um projeto **sem nenhuma tarefa** nunca é concluído sozinho.
-- Para ver os concluídos, use o botão **`Concluídos · N`** no topo da tela de Projetos (ele só aparece se houver algum).
-- Dentro dos Concluídos você pode abrir um projeto para consultar, ou clicar em **Reativar** para devolvê-lo à lista ativa.
-- **Desmarcar** uma tarefa, ou **adicionar** uma nova, em um projeto concluído o reativa automaticamente.
+- When you check the **last pending task** of a project, counting **all of its lists**, you go back to Projects and the project shows a **Complete** button.
+- Click **Complete** to move it to **Completed**. If you do nothing, the project stays where it is.
+- Adding a new task, or unchecking one, hides the button again.
+- A project **with no tasks** never shows the button.
+- To see completed projects, use the **`Completed · N`** button at the top of Projects (it only shows when there is at least one).
+- Inside Completed you can open a project to look at it, or click **Reactivate** to bring it back.
+- **Unchecking** a task, or **adding** one, in a completed project reactivates it automatically.
 
-### Anotações
+### Notes
 
-Cada tarefa pode ter uma anotação. Clique no ícone de documento da tarefa para abrir; o título da tela é o nome dela.
+Each task can have notes. Click the task's document icon to open them; the screen title is the task's name.
 
-- O **lápis** no topo abre o editor com o texto cru. **Ctrl+Enter** ou **Salvar** grava; **Esc** cancela.
-- **Enter** quebra a linha mantendo o recuo da linha atual; **Tab** insere 4 espaços; **Shift+Tab** remove um nível.
-- O que você está digitando não se perde se o menu fechar: ao reabrir, a edição continua.
-- Para apagar a anotação, apague todo o texto e salve.
+- The **pencil** at the top opens the editor with the raw text. **Ctrl+Enter** or **Save** stores it; **Esc** cancels.
+- **Enter** breaks the line keeping the current line's indentation; **Tab** inserts 4 spaces; **Shift+Tab** removes one level.
+- What you are typing is not lost if the menu closes: when you reopen it, the editing continues.
+- To delete the notes, clear all the text and save.
 
-### Formatação (markdown)
+### Formatting (markdown)
 
-**Em nomes** de projetos, listas e tarefas (uma linha):
+**In names** of projects, lists and tasks (one line):
 
-| Você digita | Aparece |
+| You type | You see |
 |---|---|
-| `**negrito**`, `*itálico*`, `~~riscado~~` | negrito, itálico, riscado |
-| `` `código` `` | código em fonte monoespaçada |
-| `> observação` | citação |
-| `- item` | item de lista |
-| `[texto](site.com)`, `www.site.com`, `https://...` | link: clique no texto para abrir |
+| `**bold**`, `*italic*`, `~~strike~~` | bold, italic, strikethrough |
+| `` `code` `` | code in a monospace font |
+| `> remark` | quote |
+| `- item` | list item |
+| `[text](site.com)`, `www.site.com`, `https://...` | link: click the text to open it |
 
-**Em anotações**, tudo isso e mais:
+**In notes**, all of the above and more:
 
-| Você digita | Aparece |
+| You type | You see |
 |---|---|
-| `# Título`, `## Subtítulo`, `### Seção` | títulos (o espaço depois do `#` é obrigatório) |
-| `1. item` | lista numerada |
-| `- [ ] pendente`, `- [x] feito` | ☐ / ☑ |
-| `---` | linha divisória |
-| ` ```py ` … ` ``` ` | bloco de código, com cores para a linguagem |
+| `# Title`, `## Subtitle`, `### Section` | headings (the space after `#` is required) |
+| `1. item` | numbered list |
+| `- [ ] pending`, `- [x] done` | ☐ / ☑ |
+| `---` | horizontal rule |
+| ` ```py ` … ` ``` ` | code block, colored for the language |
 
-Linguagens com cores: Python (`py`), JavaScript/TypeScript (`js`, `ts`), Rust (`rs`), Shell (`sh`, `bash`) e JSON
-(`json`). Outras, ou um bloco sem linguagem, aparecem sem cores.
+Languages with colors: Python (`py`), JavaScript/TypeScript (`js`, `ts`), Rust (`rs`), Shell (`sh`, `bash`) and JSON
+(`json`). Others, or a block with no language, are shown without colors.
 
-Só links `http(s)` e e-mails são abertos; outros esquemas (`file:`, `ssh:`...) aparecem como texto.
+Only `http(s)` links and e-mail addresses are opened; other schemes (`file:`, `ssh:`...) are shown as text.
 
-### Mudar o atalho
+### Change the shortcut
 
 ```sh
 dconf write /org/gnome/shell/extensions/organizedtodo/open-organizedtodo "['<Super>t']"
 ```
 
-Vale na hora. Para voltar ao padrão: `dconf reset /org/gnome/shell/extensions/organizedtodo/open-organizedtodo`.
+It takes effect right away. To go back to the default: `dconf reset /org/gnome/shell/extensions/organizedtodo/open-organizedtodo`.
 
-## Onde ficam os dados
+## Where the data lives
 
-Tudo é guardado no **dconf**, como um único texto JSON. Quem lê e grava é o daemon; a extensão só conversa com ele.
-Não há sincronização entre máquinas.
+Everything is stored in **dconf**, as a single JSON text. The daemon reads and writes it; the extension only talks to the daemon.
+There is no sync between machines.
 
 ```sh
-# ver
+# view
 dconf read /org/gnome/shell/extensions/organizedtodo/workspace
 
 # backup
 dconf dump /org/gnome/shell/extensions/organizedtodo/ > backup.conf
 
-# restaurar
+# restore
 dconf load /org/gnome/shell/extensions/organizedtodo/ < backup.conf
 ```
 
-Se você resetar o dconf (por exemplo, `dconf reset -f /`), perde as tarefas. Faça backup de vez em quando.
+If you reset dconf (for example, `dconf reset -f /`), you lose your tasks. Back up now and then.
 
-## Desenvolvimento
+## Development
 
 ```sh
-npm test         # testes de markdown e de interface (com fakes do GNOME e do daemon)
-cargo test --manifest-path daemon/Cargo.toml   # regras e persistência do daemon
-make schemas     # recompila o schema GSettings depois de editá-lo
-make install-daemon   # recompila e reinstala o daemon
-make pack        # gera o zip (só a extensão)
+npm test         # markdown and UI tests (with fakes of GNOME and of the daemon)
+cargo test --manifest-path daemon/Cargo.toml   # daemon rules and persistence
+make schemas     # recompiles the GSettings schema after editing it
+make install-daemon   # rebuilds and reinstalls the daemon
+make pack        # builds the zip (extension only)
 ```
 
-Como as peças se conectam:
+How the pieces connect:
 
 ```text
-extension.js (interface, roda dentro do gnome-shell)
-   └─ client.js ── D-Bus de sessão ──► organizedtodo-daemon (Rust)
+extension.js (UI, runs inside gnome-shell)
+   └─ client.js ── session D-Bus ──► organizedtodo-daemon (Rust)
                    io.github.gabrielsmash.OrganizedTodo     └─ dconf (GSettings)
 ```
 
-A extensão nunca bloqueia o shell: toda chamada ao daemon é assíncrona, e a interface se redesenha quando o
-daemon emite o sinal `Changed`.
+The extension never blocks the shell: every call to the daemon is asynchronous, and the UI redraws when the
+daemon emits the `Changed` signal.
 
-Para testar o daemon sem tocar nos dados reais, rode-o com o backend em memória (pare antes o instalado, porque só
-uma instância pode ter o nome no barramento):
+To test the daemon without touching your real data, run it with the in-memory backend (stop the installed one first,
+because only one instance can own the name on the bus):
 
 ```sh
 pkill -x organizedtodo-d
@@ -241,33 +242,33 @@ GSETTINGS_BACKEND=memory daemon/target/debug/organizedtodo-daemon
 gdbus introspect --session --dest io.github.gabrielsmash.OrganizedTodo --object-path /io/github/gabrielsmash/OrganizedTodo
 ```
 
-Logs da extensão e do daemon: `journalctl --user -g organizedtodo`.
+Logs of the extension and the daemon: `journalctl --user -g organizedtodo`.
 
-Os testes de interface rodam o `extension.js` real no Node, com pequenos fakes de `St`, `Clutter` e dos módulos do shell (`tests/helpers`). Eles verificam **lógica e navegação, não a aparência**; confira o visual numa sessão real.
+The UI tests run the real `extension.js` on Node, with small fakes of `St`, `Clutter` and the shell modules (`tests/helpers`). They check **logic and navigation, not appearance**; check the visuals in a real session.
 
-Estrutura:
+Layout:
 
-| Arquivo | Papel |
+| File | Role |
 |---|---|
-| `daemon/` | Backend em Rust: regras (projetos, listas, tarefas, conclusão), persistência e serviço D-Bus. |
-| `client.js` | Cliente D-Bus do daemon; mantém a cópia dos dados para a interface. |
-| `extension.js` | As telas e a navegação. |
-| `markdown.js` | Markdown → markup do Pango: nomes, anotações e cores dos blocos de código. |
-| `stylesheet.css` | Visual. |
-| `icons/` | Ícone do painel. |
-| `schemas/` | Configurações (GSettings). |
-| `tests/` | Testes. |
+| `daemon/` | Rust backend: rules (projects, lists, tasks, completion), persistence and the D-Bus service. |
+| `client.js` | D-Bus client of the daemon; keeps the copy of the data for the UI. |
+| `extension.js` | The screens and the navigation. |
+| `markdown.js` | Markdown → Pango markup: names, notes and code block colors. |
+| `stylesheet.css` | Look. |
+| `icons/` | Panel icon. |
+| `schemas/` | Settings (GSettings). |
+| `tests/` | Tests. |
 
-## Limitações conhecidas
+## Known limitations
 
-- A interface está só em português; não há arquivos de tradução.
-- Testado apenas no GNOME Shell 50.
-- O zip (`make pack`) não inclui o daemon; é preciso compilá-lo a partir do código-fonte.
-- Sem sincronização, sem lembretes e sem datas nas tarefas.
-- As cores dos blocos de código são um destaque simples por palavras-chave, não um analisador completo da linguagem.
+- The interface is in English only; there are no translation files.
+- Tested only on GNOME Shell 50.
+- The zip (`make pack`) does not include the daemon; it has to be built from source.
+- No sync, no reminders and no dates on tasks.
+- Code block colors are simple keyword highlighting, not a full parser of the language.
 
-## Licença e créditos
+## License and credits
 
-MIT. Veja [`LICENCE`](LICENCE).
+MIT. See [`LICENCE`](LICENCE).
 
-Baseado no [Todoit](https://github.com/wassimbj/todoit-gnome), copyright (c) 2024 Wassim Ben Jdida, também MIT. O aviso de copyright original foi mantido.
+Based on [Todoit](https://github.com/wassimbj/todoit-gnome), copyright (c) 2024 Wassim Ben Jdida, also MIT. The original copyright notice was kept.
