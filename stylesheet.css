@@ -289,3 +289,33 @@
     border-color: #9a58a8;
     background-color: rgba(255, 255, 255, 0.1);
 }
+
+.organizedtodo-quick-add {
+    width: 28em;
+}
+
+.organizedtodo-quick-add-target {
+    color: #9a58a8;
+    font-weight: bold;
+    padding-bottom: 8px;
+}
+
+.organizedtodo-quick-add-options {
+    spacing: 2px;
+}
+
+.organizedtodo-quick-add-option {
+    padding: 8px 10px;
+    border-radius: 8px;
+    text-align: left;
+}
+
+.organizedtodo-quick-add-option:hover,
+.organizedtodo-quick-add-option:focus {
+    background-color: rgba(154, 88, 168, 0.25);
+}
+
+.organizedtodo-quick-add-create {
+    font-style: italic;
+    color: #f0568c;
+}

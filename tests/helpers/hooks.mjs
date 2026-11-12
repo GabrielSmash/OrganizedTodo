@@ -17,7 +17,7 @@ const SOURCES = {
         AppInfo: { launch_default_for_uri: (uri) => { (globalThis.__opened ??= []).push(uri); } } };`,
     "gi://GLib": `export default { markup_escape_text: (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;') };`,
     "gi://Meta": `export default { KeyBindingFlags: { NONE: 0 } };`,
-    "gi://Shell": `export default { ActionMode: { ALL: 1 } };`,
+    "gi://Shell": `export default { ActionMode: { ALL: 1, NORMAL: 2, OVERVIEW: 4 } };`,
     "gi://St": `import { St } from "${STUBS}"; export default St;`,
     "resource:///org/gnome/shell/extensions/extension.js": `
         export class Extension {
@@ -32,12 +32,21 @@ const SOURCES = {
         export const uiGroup = new Actor();
         export const panel = { addToStatusArea() {} };
         export const wm = {
-            addKeybinding(name) { globalThis.__bound = name; },
-            removeKeybinding(name) { globalThis.__unbound = name; } };
+            addKeybinding(name, settings, flags, mode, handler) { (globalThis.__bound ??= {})[name] = handler; },
+            removeKeybinding(name) { (globalThis.__unbound ??= []).push(name); } };
         export function notify(t, b) { (globalThis.__notes ??= []).push([t, b]); }`,
     "resource:///org/gnome/shell/ui/dnd.js": `
         export const DragMotionResult = { NO_DROP: 0, MOVE_DROP: 1 };
         export function makeDraggable() { const d = { handlers: {}, connect(s, f) { this.handlers[s] = f; } }; (globalThis.__draggables ??= []).push(d); return d; }`,
+    "resource:///org/gnome/shell/ui/modalDialog.js": `
+        import { Actor, BoxLayout } from "${STUBS}";
+        export class ModalDialog extends Actor {
+            constructor(params) { super(params); this.contentLayout = new BoxLayout(); this.add_child(this.contentLayout); this.buttons = []; }
+            setButtons(buttons) { this.buttons = buttons; }
+            setInitialKeyFocus(actor) { this.initialFocus = actor; }
+            open() { this.opened = true; (globalThis.__dialogs ??= []).push(this); }
+            // Like destroyOnClose: closing destroys
+            close() { this.opened = false; this.destroy(); } };`,
 };
 
 export async function resolve(spec, ctx, next) {

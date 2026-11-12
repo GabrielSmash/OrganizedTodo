@@ -69,6 +69,26 @@ impl StoreHandle {
         })
         .await
     }
+
+    /// Where quick add should put a todo: the remembered destination,
+    /// checked against the current workspace in the same job.
+    pub async fn quick_add_destination(&self) -> Result<Option<(String, String)>, String> {
+        self.run(|store| {
+            let (folder_id, list_id) = store.last_destination();
+            let workspace = store.load()?;
+            Ok(workspace.quick_add_destination(&folder_id, &list_id))
+        })
+        .await
+    }
+
+    pub async fn remember_destination(
+        &self,
+        folder_id: String,
+        list_id: String,
+    ) -> Result<(), String> {
+        self.run(move |store| store.set_last_destination(&folder_id, &list_id))
+            .await
+    }
 }
 
 #[cfg(test)]

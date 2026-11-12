@@ -11,6 +11,7 @@ import * as DND from "resource:///org/gnome/shell/ui/dnd.js";
 import { TodoClient, undoneCount, todoCount } from "./client.js";
 import { markdownToMarkup, firstLink, noteBlocks } from "./markdown.js";
 import { isEmpty } from "./utils.js";
+import { QuickAdd } from "./quickAdd.js";
 
 const MENU_WIDTH = 440;
 const SCROLL_MAX_HEIGHT = 380;
@@ -134,6 +135,8 @@ export default class TodoListExtension extends Extension {
     _iconPivot = [0.5, 0];
     /** { draft } while the notes screen is in edit mode, or null. Kept when the menu closes. */
     _editingNotes = null;
+    /** The quick add dialog while it is open, or null */
+    _quickAdd = null;
 
     enable() {
         this._client = new TodoClient(() => this._onWorkspaceChanged());
@@ -157,6 +160,9 @@ export default class TodoListExtension extends Extension {
         this._shownRows = null;
         this._pulse = null;
         Main.wm.removeKeybinding("open-organizedtodo");
+        Main.wm.removeKeybinding("quick-add");
+        this._quickAdd?.close();
+        this._quickAdd = null;
         this._button?.destroy();
         this._button = null;
         this._mainBox = null;
@@ -285,6 +291,27 @@ export default class TodoListExtension extends Extension {
             this._button?.menu.toggle();
             this._input?.clutterText.grab_key_focus();
         });
+        // Not ALL: no point while another modal (lock screen, a system dialog) owns the keyboard
+        Main.wm.addKeybinding("quick-add", this.getSettings(), Meta.KeyBindingFlags.NONE,
+            Shell.ActionMode.NORMAL | Shell.ActionMode.OVERVIEW, () => this._openQuickAdd());
+    }
+
+    async _openQuickAdd() {
+        let destination;
+        try {
+            destination = await this._client.quickAddDestination();
+        }
+        catch (e) {
+            console.error(`organizedtodo: daemon call failed: ${e}`);
+            return;
+        }
+        // Checked after the await: the extension may have been disabled meanwhile,
+        // and a second press while waiting must not open a second dialog
+        if (!this._client || this._quickAdd) {
+            return;
+        }
+        this._quickAdd = new QuickAdd(this._client, destination, () => { this._quickAdd = null; });
+        this._quickAdd.open();
     }
 
     /** The bottom entry creates a folder, list or todo depending on the screen. */

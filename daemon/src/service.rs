@@ -144,6 +144,40 @@ impl TodoService {
         .await
     }
 
+    /// Where quick add should put a todo, as (folder id, list id);
+    /// empty ids when there is no list yet.
+    async fn quick_add_destination(&self) -> fdo::Result<(String, String)> {
+        let destination = self
+            .store
+            .quick_add_destination()
+            .await
+            .map_err(fdo::Error::Failed)?;
+        Ok(destination.unwrap_or_default())
+    }
+
+    /// Like AddTodo, and remembers the list for the next quick add.
+    async fn quick_add_todo(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        list_id: String,
+        name: String,
+    ) -> fdo::Result<bool> {
+        let (folder, list) = (folder_id.clone(), list_id.clone());
+        let added = self
+            .update(&emitter, move |workspace| {
+                workspace.add_todo(&folder, &list, &name)
+            })
+            .await?;
+        if added {
+            self.store
+                .remember_destination(folder_id, list_id)
+                .await
+                .map_err(fdo::Error::Failed)?;
+        }
+        Ok(added)
+    }
+
     async fn remove_todo(
         &self,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,

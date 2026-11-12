@@ -8,6 +8,7 @@ use crate::model::Workspace;
 const SCHEMA_ID: &str = "org.gnome.shell.extensions.organizedtodo";
 const EXTENSION_UUID: &str = "organizedtodo@gabrielsmash.github.io";
 const WORKSPACE_KEY: &str = "workspace";
+const DESTINATION_KEY: &str = "quick-add-destination";
 
 pub fn default_schema_dir() -> PathBuf {
     gio::glib::user_data_dir()
@@ -51,6 +52,17 @@ impl Store {
         Ok(())
     }
 
+    /// The (folder id, list id) quick add used last; empty ids until the first use.
+    pub fn last_destination(&self) -> (String, String) {
+        self.settings.get(DESTINATION_KEY)
+    }
+
+    pub fn set_last_destination(&self, folder_id: &str, list_id: &str) -> Result<(), String> {
+        self.settings
+            .set(DESTINATION_KEY, (folder_id, list_id))
+            .map_err(|error| error.to_string())
+    }
+
     #[cfg(test)]
     pub fn raw(&self) -> String {
         self.settings.string(WORKSPACE_KEY).to_string()
@@ -84,6 +96,17 @@ mod tests {
         let id = workspace.add_folder("Work").unwrap();
         store.save(&workspace).unwrap();
         assert_eq!(store.load().unwrap().folder(&id).unwrap().name, "Work");
+    }
+
+    #[test]
+    fn last_destination_is_empty_until_set() {
+        let store = memory_store();
+        assert_eq!(store.last_destination(), (String::new(), String::new()));
+        store.set_last_destination("f1", "l1").unwrap();
+        assert_eq!(
+            store.last_destination(),
+            ("f1".to_string(), "l1".to_string())
+        );
     }
 
     #[test]

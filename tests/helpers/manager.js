@@ -3,6 +3,8 @@
 // Workspace shape (stored as one JSON string in GSettings):
 // { folders: [ { id, name, completed, lists: [ { id, name, todos: [ { name, isDone, isFocused? } ] } ] } ] }
 const WORKSPACE = "workspace";
+// The real daemon keeps this as a (ss) tuple; here a JSON pair in the same fake settings
+const DESTINATION = "quick-add-destination";
 
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
@@ -183,6 +185,27 @@ export class TodoListManager {
         folder.completed = false;
         this._write(data);
         return true;
+    }
+
+    /** Mirrors Workspace::quick_add_destination with the remembered pair; null when there is no list. */
+    quickAddDestination() {
+        const [folderId, listId] = JSON.parse(this.GSettings.get_string(DESTINATION) || '["", ""]');
+        const data = this._read();
+        const folder = this._folder(data, folderId);
+        if (folder && !folder.completed && this._list(data, folderId, listId)) {
+            return { folderId, listId };
+        }
+        const first = data.folders.find((candidate) => !candidate.completed && candidate.lists.length > 0);
+        return first ? { folderId: first.id, listId: first.lists[0].id } : null;
+    }
+
+    /** Like addTodo, and remembers the list for the next quick add. */
+    quickAddTodo(folderId, listId, name) {
+        const added = this.addTodo(folderId, listId, name);
+        if (added) {
+            this.GSettings.set_string(DESTINATION, JSON.stringify([folderId, listId]));
+        }
+        return added;
     }
 
     removeTodo(folderId, listId, index) {

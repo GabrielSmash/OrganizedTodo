@@ -12,6 +12,7 @@ Derived from [Todoit](https://github.com/wassimbj/todoit-gnome), by wassimbj (MI
 - **Inline editing:** rename projects, lists and tasks without opening another screen.
 - **Focus and order:** highlight a task (it is pinned to the top of its list) and drag to reorder.
 - **A single panel icon**, opened by clicking or with the `Alt+Shift+Space` shortcut.
+- **Quick add from anywhere:** `Super+Alt+T` opens a box in the middle of the current screen to add a task without opening the menu. It remembers the last list you used, and can pick or create another one.
 - **Notes per task:** free text for each task, with full markdown (headings, lists, checkboxes, colored code blocks).
 - **Formatting in names:** simple markdown in projects, lists and tasks; links open with one click.
 - **A notes editor made for code:** Tab indents, Shift+Tab unindents, Enter keeps the indentation.
@@ -110,6 +111,18 @@ The text field at the bottom creates **whatever makes sense on the current scree
 
 Type and press **Enter**.
 
+### Quick add
+
+Press **`Super+Alt+T`** in any app to add a task without opening the menu. A box opens in the middle of the screen you are on.
+
+- It starts on the list you quick-added to last (the first time, the first list of the first active project).
+- Type the task and press **Enter**: it is added and the box closes. **Esc** cancels.
+- To send it somewhere else, press **Tab** or click the destination: pick a project, then a list.
+  Type to filter (accents and case do not matter), **Enter** takes the first match, **↑/↓** move between them
+  and **Esc** goes one step back. What you already typed is kept.
+- When the name you type does not exist, **Create "…"** makes the project or the list right there.
+- Completed projects are not offered: adding to one would reactivate it.
+
 ### Step by step
 
 1. On the **Projects** screen, type a project name (for example, `Project A`) and press Enter.
@@ -194,6 +207,12 @@ dconf write /org/gnome/shell/extensions/organizedtodo/open-organizedtodo "['<Sup
 
 It takes effect right away. To go back to the default: `dconf reset /org/gnome/shell/extensions/organizedtodo/open-organizedtodo`.
 
+Quick add has its own shortcut:
+
+```sh
+dconf write /org/gnome/shell/extensions/organizedtodo/quick-add "['<Super><Alt>n']"
+```
+
 ## Where the data lives
 
 Everything is stored in **dconf**, as a single JSON text. The daemon reads and writes it; the extension only talks to the daemon.
@@ -250,9 +269,10 @@ Layout:
 
 | File | Role |
 |---|---|
-| `daemon/` | Rust backend: rules (projects, lists, tasks, completion), persistence and the D-Bus service. |
+| `daemon/` | Rust backend: rules (projects, lists, tasks, completion, quick add destination), persistence and the D-Bus service. |
 | `client.js` | D-Bus client of the daemon; keeps the copy of the data for the UI. |
 | `extension.js` | The screens and the navigation. |
+| `quickAdd.js` | The quick add box (`Super+Alt+T`). |
 | `markdown.js` | Markdown → Pango markup: names, notes and code block colors. |
 | `stylesheet.css` | Look. |
 | `icons/` | Panel icon. |

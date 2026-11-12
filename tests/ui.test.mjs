@@ -48,7 +48,7 @@ await t("enable renders Projects with the stored project", async () => {
     assert.deepEqual(rowTitles(), ["General"]);
     assert.equal(ext._input.hint_text, "New project...");
     assert.equal(ext._footer.visible, true);
-    assert.equal(globalThis.__bound, "open-organizedtodo");
+    assert.deepEqual(Object.keys(globalThis.__bound), ["open-organizedtodo", "quick-add"]);
 });
 
 await t("panel button shows only the custom icon (no label, no counter)", async () => {
@@ -520,9 +520,113 @@ await t("notes of a todo that moved or was removed fall back to its list", async
     assert.equal(ext._editingNotes, null);
 });
 
+// ---- quick add: a dialog opened by its own shortcut
+const quickAdd = async () => { globalThis.__bound["quick-add"](); await flush(); return globalThis.__dialogs.at(-1); };
+const dialogTitle = (dialog) => findAll(dialog, (x) => hasClass(x, "organizedtodo-quick-add-target")).map((x) => x.label ?? x.text)[0];
+const dialogEntry = (dialog) => findAll(dialog, (x) => x.constructor.name === "Entry")[0];
+const options = (dialog) => findAll(dialog, (x) => hasClass(x, "organizedtodo-quick-add-option"));
+const typeIn = async (entry, text) => { entry.text = text; entry.clutterText.emit("text-changed"); await flush(); };
+const enter = async (entry) => { entry.clutterText.emit("activate"); await flush(); };
+const escape = async (dialog) => { dialog.buttons.find((b) => b.key === 65307).action(); await flush(); };
+const todosOf = (folderName, listName) => {
+    const folder = ext._client.getFolders(true).concat(ext._client.getFolders(false)).find((f) => f.name === folderName);
+    return folder.lists.find((l) => l.name === listName).todos.map((x) => x.name);
+};
+
+await t("quick add: opens on the first list of an active project; Enter adds there once and closes", async () => {
+    store.workspace = JSON.stringify({ folders: [
+        { id: "q0", name: "Old", completed: true, lists: [{ id: "q0a", name: "Archive", todos: [] }] },
+        { id: "q1", name: "**Work**", completed: false, lists: [{ id: "q1a", name: "Inbox", todos: [] }, { id: "q1b", name: "Later", todos: [] }] },
+        { id: "q2", name: "Home", completed: false, lists: [{ id: "q2a", name: "Chores", todos: [] }] },
+    ] });
+    await ext._client.refresh();
+    const dialog = await quickAdd();
+    assert.ok(dialog.opened);
+    assert.equal(dialogTitle(dialog), "Work › Inbox ▾"); // completed project skipped, no markdown markers
+    const entry = dialogEntry(dialog);
+    assert.equal(dialog.initialFocus, entry);
+    await typeIn(entry, "  buy milk ");
+    await enter(entry);
+    assert.deepEqual(todosOf("**Work**", "Inbox"), ["buy milk"]);
+    assert.ok(dialog.destroyed);
+    assert.equal(ext._quickAdd, null);
+});
+
+await t("quick add: a second press while one is open does nothing; Esc cancels; blank adds nothing", async () => {
+    globalThis.__bound["quick-add"]();
+    globalThis.__bound["quick-add"]();
+    await flush();
+    const dialog = globalThis.__dialogs.at(-1);
+    assert.equal(globalThis.__dialogs.filter((d) => d.opened).length, 1);
+    await enter(dialogEntry(dialog)); // empty: stays open
+    assert.ok(dialog.opened);
+    await typeIn(dialogEntry(dialog), "never");
+    await escape(dialog);
+    assert.ok(dialog.destroyed);
+    assert.deepEqual(todosOf("**Work**", "Inbox"), ["buy milk"]);
+});
+
+await t("quick add: Tab picks project then list, filtering without accents; the typed task is kept and the list remembered", async () => {
+    let dialog = await quickAdd();
+    let entry = dialogEntry(dialog);
+    await typeIn(entry, "call mom");
+    assert.deepEqual(press(entry, 65289), [true]); // Tab: EVENT_STOP
+    assert.equal(dialogTitle(dialog), "Projects");
+    assert.deepEqual(options(dialog).map((x) => x.label), ["Work", "Home"]);
+    const filter = dialogEntry(dialog);
+    assert.equal(dialog.initialFocus, filter);
+    await typeIn(filter, "HÓM");
+    assert.deepEqual(options(dialog).map((x) => x.label), ["Home", "Create “HÓM”"]); // partial: Create is still offered
+    await enter(filter); // first match
+    assert.equal(dialogTitle(dialog), "Home");
+    await escape(dialog); // one step back
+    assert.equal(dialogTitle(dialog), "Projects");
+    await click(options(dialog)[1]); // Home
+    await click(options(dialog)[0]); // Chores
+    assert.equal(dialogTitle(dialog), "Home › Chores ▾");
+    entry = dialogEntry(dialog);
+    assert.equal(entry.text, "call mom");
+    await enter(entry);
+    assert.deepEqual(todosOf("Home", "Chores"), ["call mom"]);
+    dialog = await quickAdd();
+    assert.equal(dialogTitle(dialog), "Home › Chores ▾"); // remembered
+    await escape(dialog);
+});
+
+await t("quick add: Create makes a project and a list; no Create for a name that exists; no list at all starts in the picker", async () => {
+    let dialog = await quickAdd();
+    press(dialogEntry(dialog), 65289);
+    let filter = dialogEntry(dialog);
+    await typeIn(filter, "work");
+    assert.deepEqual(options(dialog).map((x) => x.label), ["Work"]); // exists: no Create
+    await typeIn(filter, "Groceries");
+    assert.deepEqual(options(dialog).map((x) => x.label), ["Create “Groceries”"]);
+    await enter(filter);
+    assert.equal(dialogTitle(dialog), "Groceries");
+    assert.deepEqual(options(dialog).map((x) => x.label), []);
+    filter = dialogEntry(dialog);
+    await typeIn(filter, "Market");
+    await enter(filter);
+    assert.equal(dialogTitle(dialog), "Groceries › Market ▾");
+    const entry = dialogEntry(dialog);
+    await typeIn(entry, "bread");
+    await enter(entry);
+    assert.deepEqual(todosOf("Groceries", "Market"), ["bread"]);
+    // nothing to add to: the dialog opens in the picker, with the filter focused
+    store.workspace = JSON.stringify({ folders: [] });
+    await ext._client.refresh();
+    dialog = await quickAdd();
+    assert.equal(dialogTitle(dialog), "Projects");
+    assert.equal(dialog.initialFocus, dialogEntry(dialog));
+    await escape(dialog); // back to the task screen, nothing to pick yet
+    assert.equal(dialogTitle(dialog), "Choose a list ▾");
+    await escape(dialog);
+    assert.ok(dialog.destroyed);
+});
+
 await t("disable cleans up", async () => {
     ext.disable();
-    assert.equal(globalThis.__unbound, "open-organizedtodo");
+    assert.deepEqual(globalThis.__unbound, ["open-organizedtodo", "quick-add"]);
     assert.equal(ext._button, null);
     assert.equal(ext._client, null);
 });

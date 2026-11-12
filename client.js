@@ -50,6 +50,16 @@ const INTERFACE_XML = `
       <arg name="name" type="s" direction="in"/>
       <arg type="b" direction="out"/>
     </method>
+    <method name="QuickAddDestination">
+      <arg name="folder_id" type="s" direction="out"/>
+      <arg name="list_id" type="s" direction="out"/>
+    </method>
+    <method name="QuickAddTodo">
+      <arg name="folder_id" type="s" direction="in"/>
+      <arg name="list_id" type="s" direction="in"/>
+      <arg name="name" type="s" direction="in"/>
+      <arg type="b" direction="out"/>
+    </method>
     <method name="RemoveTodo">
       <arg name="folder_id" type="s" direction="in"/>
       <arg name="list_id" type="s" direction="in"/>
@@ -243,6 +253,17 @@ export class TodoClient {
 
     addTodo(folderId, listId, name) {
         return this._call("AddTodo", folderId, listId, name);
+    }
+
+    /** { folderId, listId } for quick add, or null when there is no list yet. */
+    async quickAddDestination() {
+        // Two out arguments: _call only returns the first one
+        const [folderId, listId] = await this._proxy.QuickAddDestinationAsync();
+        return folderId ? { folderId, listId } : null;
+    }
+
+    quickAddTodo(folderId, listId, name) {
+        return this._call("QuickAddTodo", folderId, listId, name);
     }
 
     removeTodo(folderId, listId, index) {

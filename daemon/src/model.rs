@@ -58,9 +58,6 @@ impl Folder {
         self.lists.iter().map(List::undone_count).sum()
     }
 
-    // The daemon only changes or serializes the workspace; read-only lookups
-    // exist for the tests to check the results
-    #[cfg(test)]
     pub fn list(&self, list_id: &str) -> Option<&List> {
         self.lists.iter().find(|list| list.id == list_id)
     }
@@ -71,7 +68,6 @@ impl Folder {
 }
 
 impl Workspace {
-    #[cfg(test)]
     pub fn folder(&self, folder_id: &str) -> Option<&Folder> {
         self.folders.iter().find(|folder| folder.id == folder_id)
     }
@@ -82,6 +78,7 @@ impl Workspace {
             .find(|folder| folder.id == folder_id)
     }
 
+    // Only the tests look a list up by both ids
     #[cfg(test)]
     pub fn list(&self, folder_id: &str, list_id: &str) -> Option<&List> {
         self.folder(folder_id)?.list(list_id)
@@ -89,6 +86,30 @@ impl Workspace {
 
     pub fn list_mut(&mut self, folder_id: &str, list_id: &str) -> Option<&mut List> {
         self.folder_mut(folder_id)?.list_mut(list_id)
+    }
+
+    /// Where a quick-added todo goes, as (folder id, list id): the remembered
+    /// list while it exists in an active project, otherwise the first list of
+    /// the first active project; None when there is no list at all.
+    /// Completed projects are skipped: adding to one would reactivate it.
+    pub fn quick_add_destination(
+        &self,
+        folder_id: &str,
+        list_id: &str,
+    ) -> Option<(String, String)> {
+        if let Some(folder) = self.folder(folder_id)
+            && !folder.completed
+            && folder.list(list_id).is_some()
+        {
+            return Some((folder_id.to_string(), list_id.to_string()));
+        }
+        self.folders
+            .iter()
+            .filter(|folder| !folder.completed)
+            .find_map(|folder| {
+                let list = folder.lists.first()?;
+                Some((folder.id.clone(), list.id.clone()))
+            })
     }
 
     pub fn add_folder(&mut self, name: &str) -> Option<String> {
@@ -425,6 +446,34 @@ mod tests {
         assert!(raw.contains(r##""notes":"# Plan\n- step""##));
         assert!(workspace.set_todo_notes("f1", "l1", 0, ""));
         assert!(!serde_json::to_string(&workspace).unwrap().contains("notes"));
+    }
+
+    #[test]
+    fn quick_add_destination_keeps_the_remembered_list_or_falls_back() {
+        let mut workspace = sample();
+        let pair = |folder: &str, list: &str| Some((folder.to_string(), list.to_string()));
+        assert_eq!(
+            workspace.quick_add_destination("f1", "l2"),
+            pair("f1", "l2")
+        );
+        // never used, deleted list, or a completed project: first list of the first active project
+        assert_eq!(workspace.quick_add_destination("", ""), pair("f1", "l1"));
+        assert_eq!(
+            workspace.quick_add_destination("f1", "gone"),
+            pair("f1", "l1")
+        );
+        assert_eq!(
+            workspace.quick_add_destination("f2", "l3"),
+            pair("f1", "l1")
+        );
+        // an active project without lists is skipped
+        let empty = workspace.add_folder("Empty").unwrap();
+        workspace.folders.rotate_right(1);
+        assert_eq!(workspace.folders[0].id, empty);
+        assert_eq!(workspace.quick_add_destination("", ""), pair("f1", "l1"));
+        // no list anywhere
+        assert!(workspace.remove_folder("f1"));
+        assert_eq!(workspace.quick_add_destination("", ""), None);
     }
 
     #[test]

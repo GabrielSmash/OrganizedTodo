@@ -11,5 +11,15 @@
       <summary>Shortcut to open the extension</summary>
       <description>Press Alt+Shift+Space to open the extension.</description>
     </key>
+    <key name="quick-add" type="as">
+      <default><![CDATA[['<Super><Alt>t']]]></default>
+      <summary>Shortcut to quickly add a task</summary>
+      <description>Press Super+Alt+T to add a task from anywhere, without opening the menu.</description>
+    </key>
+    <key name="quick-add-destination" type="(ss)">
+      <default>('', '')</default>
+      <summary>Last project and list used by quick add</summary>
+      <description>Project id and list id where the last quick-added task went. Empty until the first use.</description>
+    </key>
   </schema>
 </schemalist>
