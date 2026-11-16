@@ -24,13 +24,19 @@ const SOURCES = {
             get metadata() { return { name: "OrganizedTodo" }; }
             get uuid() { return "organizedtodo@gabrielsmash.github.io"; }
             get path() { return "/ext"; }
-            getSettings() { return globalThis.__settings; } }
+            getSettings() { return globalThis.__settings; }
+            openPreferences() { globalThis.__prefsOpened = (globalThis.__prefsOpened ?? 0) + 1; } }
         export const gettext = (s) => s;`,
     "resource:///org/gnome/shell/ui/panelMenu.js": `import { PanelButton } from "${STUBS}"; export const Button = PanelButton;`,
     "resource:///org/gnome/shell/ui/main.js": `
         import { Actor } from "${STUBS}";
         export const uiGroup = new Actor();
-        export const panel = { addToStatusArea() {} };
+        export const panel = {
+            _leftBox: new Actor(), _centerBox: new Actor(), _rightBox: new Actor(),
+            addToStatusArea(role, indicator, position, box) {
+                const target = { left: this._leftBox, center: this._centerBox }[box] ?? this._rightBox;
+                target.insert_child_at_index(indicator.container, position ?? 0);
+            } };
         export const wm = {
             addKeybinding(name, settings, flags, mode, handler) { (globalThis.__bound ??= {})[name] = handler; },
             removeKeybinding(name) { (globalThis.__unbound ??= []).push(name); } };

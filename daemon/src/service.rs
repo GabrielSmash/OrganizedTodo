@@ -4,6 +4,7 @@ use zbus::object_server::SignalEmitter;
 
 use crate::actor::StoreHandle;
 use crate::model::Workspace;
+use crate::preferences::Preferences;
 
 pub const BUS_NAME: &str = "io.github.gabrielsmash.OrganizedTodo";
 pub const OBJECT_PATH: &str = "/io/github/gabrielsmash/OrganizedTodo";
@@ -23,9 +24,19 @@ impl TodoService {
         emitter: &SignalEmitter<'_>,
         change: impl FnOnce(&mut Workspace) -> R + Send + 'static,
     ) -> fdo::Result<R> {
+        self.update_with_preferences(emitter, move |workspace, _| change(workspace))
+            .await
+    }
+
+    /// Like update, for the rules that depend on what the user chose in the preferences.
+    async fn update_with_preferences<R: Send + 'static>(
+        &self,
+        emitter: &SignalEmitter<'_>,
+        change: impl FnOnce(&mut Workspace, Preferences) -> R + Send + 'static,
+    ) -> fdo::Result<R> {
         let result = self
             .store
-            .update(change)
+            .update_with_preferences(change)
             .await
             .map_err(fdo::Error::Failed)?;
         if let Err(error) = Self::changed(emitter).await {
@@ -138,8 +149,8 @@ impl TodoService {
         list_id: String,
         name: String,
     ) -> fdo::Result<bool> {
-        self.update(&emitter, move |workspace| {
-            workspace.add_todo(&folder_id, &list_id, &name)
+        self.update_with_preferences(&emitter, move |workspace, preferences| {
+            workspace.add_todo(&folder_id, &list_id, &name, preferences.new_todo_at)
         })
         .await
     }
@@ -165,8 +176,8 @@ impl TodoService {
     ) -> fdo::Result<bool> {
         let (folder, list) = (folder_id.clone(), list_id.clone());
         let added = self
-            .update(&emitter, move |workspace| {
-                workspace.add_todo(&folder, &list, &name)
+            .update_with_preferences(&emitter, move |workspace, preferences| {
+                workspace.add_todo(&folder, &list, &name, preferences.new_todo_at)
             })
             .await?;
         if added {
@@ -219,16 +230,28 @@ impl TodoService {
         .await
     }
 
-    /// Returns true when this toggle left every todo of the project done.
+    /// Returns (all_done, index): whether this toggle left every todo of the project done,
+    /// and where the todo is now (done todos may move to the bottom).
     async fn toggle_todo(
         &self,
         #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
         folder_id: String,
         list_id: String,
         index: u32,
-    ) -> fdo::Result<bool> {
-        self.update(&emitter, move |workspace| {
-            workspace.toggle_todo(&folder_id, &list_id, index as usize)
+    ) -> fdo::Result<(bool, u32)> {
+        self.update_with_preferences(&emitter, move |workspace, preferences| {
+            workspace
+                .toggle_todo(
+                    &folder_id,
+                    &list_id,
+                    index as usize,
+                    preferences.done_todo,
+                    preferences.project_completion,
+                )
+                // An unknown todo changes nothing: not all done, still where it was asked
+                .map_or((false, index), |toggled| {
+                    (toggled.all_done, toggled.index as u32)
+                })
         })
         .await
     }

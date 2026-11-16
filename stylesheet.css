@@ -11,6 +11,15 @@
     icon-size: 16px;
 }
 
+.organizedtodo-panel-box {
+    spacing: 4px;
+}
+
+.organizedtodo-panel-count {
+    font-size: 12px;
+    font-weight: bold;
+}
+
 /* ---------- header ---------- */
 .organizedtodo-header {
     spacing: 6px;
@@ -318,4 +327,73 @@
 .organizedtodo-quick-add-create {
     font-style: italic;
     color: #f0568c;
+}
+
+/* ---------- theme "System": GNOME's accent color instead of the icon's gradient ----------
+   The class sits on the menu box and on the quick add dialog (rules match inside them),
+   and on each burst dot itself (rules with both classes, no space). */
+.organizedtodo-system .organizedtodo-accent-btn {
+    background-gradient-direction: none;
+    background-color: -st-accent-color;
+}
+
+.organizedtodo-system .organizedtodo-accent-btn:hover,
+.organizedtodo-system .organizedtodo-accent-btn:focus {
+    background-color: st-lighten(-st-accent-color, 10%);
+}
+
+.organizedtodo-system .organizedtodo-badge {
+    color: st-lighten(-st-accent-color, 30%);
+    background-gradient-direction: none;
+    background-color: st-transparentize(-st-accent-color, 0.65);
+}
+
+.organizedtodo-system .organizedtodo-check:hover,
+.organizedtodo-system .organizedtodo-check:focus {
+    border-color: -st-accent-color;
+}
+
+.organizedtodo-system .organizedtodo-check-on {
+    border-color: -st-accent-color;
+    background-gradient-direction: none;
+    background-color: -st-accent-color;
+}
+
+.organizedtodo-burst-0.organizedtodo-system {
+    background-color: st-darken(-st-accent-color, 10%);
+}
+
+.organizedtodo-burst-1.organizedtodo-system {
+    background-color: -st-accent-color;
+}
+
+.organizedtodo-burst-2.organizedtodo-system {
+    background-color: st-lighten(-st-accent-color, 20%);
+}
+
+.organizedtodo-system .organizedtodo-focused {
+    background-color: st-transparentize(-st-accent-color, 0.85);
+}
+
+.organizedtodo-system .organizedtodo-focused .organizedtodo-focus-btn,
+.organizedtodo-system .organizedtodo-notes-on,
+.organizedtodo-system .organizedtodo-quick-add-create {
+    color: st-lighten(-st-accent-color, 20%);
+}
+
+.organizedtodo-system .organizedtodo-drag-over {
+    box-shadow: inset 0 2px 0 -st-accent-color;
+}
+
+.organizedtodo-system .organizedtodo-input:focus {
+    border-color: -st-accent-color;
+}
+
+.organizedtodo-system .organizedtodo-quick-add-target {
+    color: -st-accent-color;
+}
+
+.organizedtodo-system .organizedtodo-quick-add-option:hover,
+.organizedtodo-system .organizedtodo-quick-add-option:focus {
+    background-color: st-transparentize(-st-accent-color, 0.75);
 }

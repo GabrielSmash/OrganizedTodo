@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { register } from "node:module";
 register(new URL("./helpers/hooks.mjs", import.meta.url));
 
-const { findAll, hasClass } = await import(new URL("./helpers/stubs.mjs", import.meta.url).href);
+const { findAll, hasClass, Actor } = await import(new URL("./helpers/stubs.mjs", import.meta.url).href);
 const { default: Ext } = await import(new URL("../extension.js", import.meta.url).href);
 
 // ---- fake settings, seeded with one project: General / Tasks = [alpha (pending), beta (done)]
@@ -16,7 +16,27 @@ const store = {
         }],
     }),
 };
-globalThis.__settings = { get_string: (k) => store[k], set_string: (k, v) => { store[k] = v; } };
+store["panel-position"] = "right";
+store["show-pending-count"] = false;
+store["menu-width"] = 440;
+store["menu-height"] = 380;
+store["completion-effect"] = true;
+store.theme = "organizedtodo";
+store["confirm-delete"] = true;
+store["open-on"] = "last";
+store["quick-add-keep-open"] = false;
+store["done-todo-position"] = "stay";
+store["project-completion"] = "button";
+store["quick-add-target"] = "remember";
+// Fake GSettings: values live in store; a set emits "changed::key" like the real one
+const settings = new Actor();
+settings.get_string = (k) => store[k];
+settings.set_string = (k, v) => { store[k] = v; settings.emit(`changed::${k}`, k); };
+settings.get_boolean = (k) => store[k];
+settings.set_boolean = (k, v) => { store[k] = v; settings.emit(`changed::${k}`, k); };
+settings.get_int = (k) => store[k];
+settings.set_int = (k, v) => { store[k] = v; settings.emit(`changed::${k}`, k); };
+globalThis.__settings = settings;
 globalThis.__notes = [];
 globalThis.global = { create_app_launch_context: () => null };
 
@@ -51,13 +71,89 @@ await t("enable renders Projects with the stored project", async () => {
     assert.deepEqual(Object.keys(globalThis.__bound), ["open-organizedtodo", "quick-add"]);
 });
 
-await t("panel button shows only the custom icon (no label, no counter)", async () => {
-    const kids = ext._button.children;
-    assert.equal(kids.length, 1);
-    assert.equal(kids[0].constructor.name, "Icon");
-    assert.deepEqual(kids[0].gicon, { path: "/ext/icons/organizedtodo.svg" });
-    assert.equal(kids[0].style_class, "organizedtodo-panel-icon");
-    assert.equal(findAll(ext._button, (n) => n.constructor.name === "Label").length, 0);
+await t("the gear on Projects closes the menu and opens the preferences", async () => {
+    let closed = 0;
+    ext._button.menu.close = () => closed++;
+    await click(btnByIcon(ext._header, "emblem-system-symbolic")[0]);
+    assert.equal(closed, 1);
+    assert.equal(globalThis.__prefsOpened, 1);
+});
+
+await t("panel button shows the custom icon; the count is hidden by default", async () => {
+    const [box] = ext._button.children;
+    const [icon, count] = box.children;
+    assert.equal(icon.constructor.name, "Icon");
+    assert.deepEqual(icon.gicon, { path: "/ext/icons/organizedtodo.svg" });
+    assert.equal(icon.style_class, "organizedtodo-panel-icon");
+    assert.equal(count.visible, false);
+});
+
+await t("show-pending-count shows the pending tasks next to the icon, live; none pending hides it", async () => {
+    settings.set_boolean("show-pending-count", true);
+    assert.equal(ext._countLabel.visible, true);
+    assert.equal(ext._countLabel.text, "1"); // alpha; beta is done
+    await click(mainBtn(rows()[0]));          // General
+    await click(mainBtn(rows()[0]));          // Tasks
+    assert.equal(todoLabels()[0], "alpha");
+    await click(checks()[0]);                 // alpha done: nothing pending, back on Projects
+    assert.equal(ext._countLabel.visible, false);
+    assert.equal(headerTitle(), "Projects");
+    await click(mainBtn(rows()[0]));
+    await click(mainBtn(rows()[0]));
+    await click(checks()[0]);                 // alpha pending again
+    assert.equal(ext._countLabel.text, "1");
+    assert.equal(ext._countLabel.visible, true);
+    settings.set_boolean("show-pending-count", false);
+    assert.equal(ext._countLabel.visible, false);
+    await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
+    await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
+    assert.equal(headerTitle(), "Projects");
+});
+
+await t("menu size follows menu-width and menu-height, live", async () => {
+    assert.equal(ext._mainBox.style, "width: 440px;");
+    assert.equal(ext._scroll.style, "max-height: 380px;");
+    settings.set_int("menu-width", 600);
+    settings.set_int("menu-height", 700);
+    assert.equal(ext._mainBox.style, "width: 600px;");
+    assert.equal(ext._scroll.style, "max-height: 700px;");
+    settings.set_int("menu-width", 440);
+    settings.set_int("menu-height", 380);
+});
+
+await t("theme system puts organizedtodo-system on the menu (live), the quick add and the burst dots", async () => {
+    const { uiGroup } = await import("resource:///org/gnome/shell/ui/main.js");
+    const burstClasses = () => {
+        ext._burstFrom(new Actor());
+        return uiGroup.children.slice(-8).map((dot) => hasClass(dot, "organizedtodo-system"));
+    };
+    assert.equal(ext._mainBox.classes.has("organizedtodo-system"), false);
+    assert.ok(burstClasses().every((has) => !has));
+
+    settings.set_string("theme", "system");
+    assert.equal(ext._mainBox.classes.has("organizedtodo-system"), true);
+    assert.ok(burstClasses().every((has) => has));
+    globalThis.__bound["quick-add"]();
+    await flush();
+    const dialog = globalThis.__dialogs.at(-1);
+    assert.ok(dialog.styleClass.split(" ").includes("organizedtodo-system"));
+    dialog.close();
+
+    settings.set_string("theme", "organizedtodo");
+    assert.equal(ext._mainBox.classes.has("organizedtodo-system"), false);
+});
+
+await t("the icon follows panel-position live: right by default, then left and center", async () => {
+    const { panel } = await import("resource:///org/gnome/shell/ui/main.js");
+    const box = () => ["_leftBox", "_centerBox", "_rightBox"].find((b) => panel[b].children.includes(ext._button.container));
+    assert.equal(box(), "_rightBox");
+    assert.equal(panel._rightBox.children[0], ext._button.container);
+    settings.set_string("panel-position", "left");
+    assert.equal(box(), "_leftBox");
+    settings.set_string("panel-position", "center");
+    assert.equal(box(), "_centerBox");
+    settings.set_string("panel-position", "right");
+    assert.equal(box(), "_rightBox");
 });
 
 await t("create project from the bottom input", async () => {
@@ -210,6 +306,17 @@ await t("menu closing disarms a pending delete", async () => {
     assert.ok(pill(rows()[0], "Delete?"));
     ext._button.menu.emit("open-state-changed", false);
     assert.equal(pill(rows()[0], "Delete?"), undefined);
+});
+
+await t("confirm-delete off: a project with content goes at the first click", async () => {
+    settings.set_boolean("confirm-delete", false);
+    await type("Doomed");
+    await click(mainBtn(rows()[1]));
+    await type("List");                                   // now it has content
+    await click(btnByIcon(ext._header, "go-previous-symbolic")[0]);
+    await click(btnByIcon(rows()[1], "edit-delete-symbolic")[0]);
+    assert.deepEqual(rowTitles(), ["General"]);
+    settings.set_boolean("confirm-delete", true);
 });
 
 await t("todo row: focus moves to top, no copy button, markup escaping, remove", async () => {
@@ -388,6 +495,7 @@ await t("animations: menu grows from the icon, screens slide, new rows fade in, 
 
     // marked done: once laid out, 8 dots fly out of the check's center and are destroyed
     const { uiGroup } = await import("resource:///org/gnome/shell/ui/main.js");
+    Object.assign(ext._scroll, { x: 0, y: 0, width: 440, height: 380 });
     Object.assign(check, { x: 100, y: 50, width: 18, height: 18 });
     check.emit("notify::allocation");
     const dots = uiGroup.children.slice(-8);
@@ -406,6 +514,54 @@ await t("animations: menu grows from the icon, screens slide, new rows fade in, 
     menu.emit("open-state-changed", false);
     assert.deepEqual(menu.pivot, [410 / 440, 0]);
     assert.deepEqual(menu.eased.at(-1).to, { scale_x: 0.1, scale_y: 0.1, duration: 150, mode: 4 });
+});
+
+await t("completion-effect off: checking a task neither pulses nor bursts", async () => {
+    const { uiGroup } = await import("resource:///org/gnome/shell/ui/main.js");
+    settings.set_boolean("completion-effect", false);
+    const before = uiGroup.children.length;
+    await click(checks()[0]);                 // "one" done; "two" still pending
+    const check = checks()[0];
+    check.emit("notify::allocation");
+    assert.equal(check.eased, undefined);
+    assert.equal(uiGroup.children.length, before);
+    await click(checks()[0]);                 // back to pending
+    settings.set_boolean("completion-effect", true);
+});
+
+await t("done-todo-position bottom: the done task moves down and the pulse follows it", async () => {
+    settings.set_string("done-todo-position", "bottom");
+    await click(checks()[0]);                              // "one" done: now below "two"
+    assert.deepEqual(todoLabels(), ["two", "one"]);
+    assert.deepEqual(checks()[1].eased?.[0].from, { scale_x: 1.35, scale_y: 1.35 });
+    assert.equal(checks()[0].eased, undefined);
+    await click(checks()[1]);                              // unchecked: stays at the bottom
+    assert.deepEqual(todoLabels(), ["two", "one"]);
+    settings.set_string("done-todo-position", "stay");
+});
+
+await t("a check scrolled below the list bursts from its bottom edge, upwards only", async () => {
+    const { uiGroup } = await import("resource:///org/gnome/shell/ui/main.js");
+    Object.assign(ext._scroll, { x: 0, y: 0, width: 440, height: 100 });
+    ext._burstFrom(new Actor({ x: 40, y: 150, width: 18, height: 18 }));
+    const dots = uiGroup.children.slice(-8);
+    assert.ok(dots.every((dot) => dot.x === 46 && dot.y === 97));       // on the edge, centered on the check
+    assert.ok(dots.every((dot) => dot.translation_y < 0));              // all into the list
+});
+
+await t("project-completion automatic: the last task done archives the project", async () => {
+    settings.set_string("project-completion", "automatic");
+    ext._navigate({ screen: "folders" });
+    await type("Auto");
+    await click(mainBtn(rows()[rowTitles().indexOf("Auto")]));
+    await type("Steps");
+    await click(mainBtn(rows()[0]));
+    await type("only");
+    await click(checks()[0]);
+    assert.equal(headerTitle(), "Projects");
+    assert.ok(!rowTitles().includes("Auto"));
+    assert.ok(ext._client.getFolders(true).some((folder) => folder.name === "Auto"));
+    settings.set_string("project-completion", "button");
 });
 
 // ---- notes: keys as the editor receives them
@@ -520,6 +676,24 @@ await t("notes of a todo that moved or was removed fall back to its list", async
     assert.equal(ext._editingNotes, null);
 });
 
+await t("open-on projects: closing the menu goes back to Projects, except with a notes draft open", async () => {
+    settings.set_string("open-on", "projects");
+    ext._navigate({ screen: "folders" });
+    await click(mainBtn(rows()[0]));                       // General's lists
+    ext._button.menu.emit("open-state-changed", false);
+    assert.equal(headerTitle(), "Projects");
+    await click(mainBtn(rows()[0]));
+    await click(mainBtn(rows()[0]));                       // its first list
+    await click(btnByIcon(ext._content, "text-x-generic-symbolic")[0]);
+    await click(btnByIcon(ext._header, "document-edit-symbolic")[0]); // a draft is open
+    ext._button.menu.emit("open-state-changed", false);
+    assert.equal(entries().length, 1);                     // still editing the notes
+    assert.deepEqual(press(entries()[0], KEY.Escape), [true]); // cancel the draft
+    ext._button.menu.emit("open-state-changed", false);
+    assert.equal(headerTitle(), "Projects");
+    settings.set_string("open-on", "last");
+});
+
 // ---- quick add: a dialog opened by its own shortcut
 const quickAdd = async () => { globalThis.__bound["quick-add"](); await flush(); return globalThis.__dialogs.at(-1); };
 const dialogTitle = (dialog) => findAll(dialog, (x) => hasClass(x, "organizedtodo-quick-add-target")).map((x) => x.label ?? x.text)[0];
@@ -624,11 +798,44 @@ await t("quick add: Create makes a project and a list; no Create for a name that
     assert.ok(dialog.destroyed);
 });
 
+await t("quick add with quick-add-keep-open: stays open, clears for the next task, adds each; Esc closes", async () => {
+    settings.set_boolean("quick-add-keep-open", true);
+    store.workspace = JSON.stringify({ folders: [
+        { id: "k1", name: "Inbox", completed: false, lists: [{ id: "k1a", name: "Today", todos: [] }] },
+    ] });
+    await ext._client.refresh();
+    const dialog = await quickAdd();
+    const entry = dialogEntry(dialog);
+    await typeIn(entry, "first");
+    await enter(entry);
+    assert.ok(dialog.opened);
+    assert.equal(entry.get_text(), "");
+    assert.equal(entry.hint_text, "Added “first” · next task...");
+    await typeIn(entry, "second");
+    await enter(entry);
+    assert.deepEqual(todosOf("Inbox", "Today"), ["first", "second"]);
+    await escape(dialog);
+    assert.equal(dialog.opened, false);
+    settings.set_boolean("quick-add-keep-open", false);
+});
+
+await t("quick-add-target ask: the dialog always starts on the project picker", async () => {
+    settings.set_string("quick-add-target", "ask");
+    const dialog = await quickAdd();
+    assert.equal(dialogTitle(dialog), "Projects");
+    assert.equal(dialog.initialFocus, dialogEntry(dialog));
+    await escape(dialog);                                  // back to the task screen
+    await escape(dialog);                                  // closed
+    assert.ok(dialog.destroyed);
+    settings.set_string("quick-add-target", "remember");
+});
+
 await t("disable cleans up", async () => {
     ext.disable();
     assert.deepEqual(globalThis.__unbound, ["open-organizedtodo", "quick-add"]);
     assert.equal(ext._button, null);
     assert.equal(ext._client, null);
+    assert.equal(Object.values(settings.handlers).flat().length, 0);
 });
 
 console.log(`\n${n} UI tests passed`);

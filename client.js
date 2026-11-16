@@ -85,6 +85,7 @@ const INTERFACE_XML = `
       <arg name="list_id" type="s" direction="in"/>
       <arg name="index" type="u" direction="in"/>
       <arg type="b" direction="out"/>
+      <arg type="u" direction="out"/>
     </method>
     <method name="SetTodoFocus">
       <arg name="folder_id" type="s" direction="in"/>
@@ -279,8 +280,11 @@ export class TodoClient {
     }
 
     /** Resolves to true when this made every todo of the project done. */
-    toggleTodo(folderId, listId, index) {
-        return this._call("ToggleTodo", folderId, listId, index);
+    /** { allDone, index }: index is where the todo is now (done todos may move to the bottom) */
+    async toggleTodo(folderId, listId, index) {
+        // Two out arguments: _call only returns the first one
+        const [allDone, newIndex] = await this._proxy.ToggleTodoAsync(folderId, listId, index);
+        return { allDone, index: newIndex };
     }
 
     setTodoFocus(folderId, listId, index, focused) {

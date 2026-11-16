@@ -48,6 +48,10 @@ export class Actor {
         this.clutterText.owner = this;
     }
     add_child(c) { this.children.push(c); c.parent = this; }
+    remove_child(c) { this.children.splice(this.children.indexOf(c), 1); c.parent = null; }
+    // Like Clutter: a negative index appends
+    insert_child_at_index(c, i) { this.children.splice(i < 0 ? this.children.length : i, 0, c); c.parent = this; }
+    get_parent() { return this.parent ?? null; }
     set_child(c) { this.child = c; }
     // Like Clutter: destroying emits "destroy", and destroying a parent destroys its children
     destroy_all_children() { for (const c of this.children.splice(0)) c.destroy?.(); }
@@ -102,6 +106,7 @@ export const St = {
 export class PanelButton extends Actor {
     constructor() {
         super();
+        this.container = new Actor();
         this.menu = new Actor();
         this.menu.actor = this.menu;
         this.menu.isOpen = false;

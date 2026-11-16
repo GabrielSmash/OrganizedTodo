@@ -16,16 +16,19 @@ export class QuickAdd {
     /**
      * destination: { folderId, listId } from the daemon, or null when there is no list yet.
      * onClosed runs once the dialog is gone, however it was closed.
+     * themeClass: "" or the class for GNOME's accent color (see extension.js).
+     * keepOpen: after adding, clear the entry for the next task instead of closing.
      */
-    constructor(client, destination, onClosed) {
+    constructor(client, destination, onClosed, { themeClass = "", keepOpen = false } = {}) {
         this._client = client;
         this._destination = destination;
+        this._keepOpen = keepOpen;
         /** The task typed so far, kept while the destination is being picked */
         this._draft = "";
         /** "Project › List" once picked here; until then it comes from the client's copy */
         this._targetLabel = null;
         // destroyOnClose is the default: a new dialog for every use, nothing left over
-        this._dialog = new ModalDialog.ModalDialog({ styleClass: "organizedtodo-quick-add" });
+        this._dialog = new ModalDialog.ModalDialog({ styleClass: `organizedtodo-quick-add ${themeClass}` });
         this._dialog.connect("destroy", () => {
             this._dialog = null;
             onClosed();
@@ -214,6 +217,12 @@ export class QuickAdd {
         const { folderId, listId } = this._destination;
         this._client.quickAddTodo(folderId, listId, name)
             .catch((e) => console.error(`organizedtodo: daemon call failed: ${e}`));
-        this.close();
+        if (!this._keepOpen) {
+            this.close();
+            return;
+        }
+        // Optimistic, like closing: a refused task (its list deleted meanwhile) only reaches the log
+        this._entry.set_text("");
+        this._entry.hint_text = `${_("Added")} “${name}” · ${_("next task...")}`;
     }
 }

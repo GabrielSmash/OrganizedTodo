@@ -3,6 +3,7 @@ use std::sync::mpsc;
 use std::thread;
 
 use crate::model::Workspace;
+use crate::preferences::Preferences;
 use crate::store::Store;
 
 type Job = Box<dyn FnOnce(&Store) + Send>;
@@ -56,14 +57,16 @@ impl StoreHandle {
             .await
     }
 
+    /// Load, apply, save, with the user's preferences read in the same job as the data.
     /// Nothing is saved when the stored data cannot be loaded.
-    pub async fn update<R: Send + 'static>(
+    pub async fn update_with_preferences<R: Send + 'static>(
         &self,
-        change: impl FnOnce(&mut Workspace) -> R + Send + 'static,
+        change: impl FnOnce(&mut Workspace, Preferences) -> R + Send + 'static,
     ) -> Result<R, String> {
         self.run(move |store| {
+            let preferences = store.preferences();
             let mut workspace = store.load()?;
-            let result = change(&mut workspace);
+            let result = change(&mut workspace, preferences);
             store.save(&workspace).map_err(|error| error.to_string())?;
             Ok(result)
         })
@@ -75,8 +78,9 @@ impl StoreHandle {
     pub async fn quick_add_destination(&self) -> Result<Option<(String, String)>, String> {
         self.run(|store| {
             let (folder_id, list_id) = store.last_destination();
+            let target = store.preferences().quick_add_target;
             let workspace = store.load()?;
-            Ok(workspace.quick_add_destination(&folder_id, &list_id))
+            Ok(workspace.quick_add_destination(&folder_id, &list_id, target))
         })
         .await
     }
@@ -108,10 +112,11 @@ mod tests {
     #[test]
     fn update_persists_between_calls() {
         let handle = memory_handle();
-        let id =
-            futures_lite::future::block_on(handle.update(|workspace| workspace.add_folder("Work")))
-                .unwrap()
-                .unwrap();
+        let id = futures_lite::future::block_on(
+            handle.update_with_preferences(|workspace, _| workspace.add_folder("Work")),
+        )
+        .unwrap()
+        .unwrap();
         let name = futures_lite::future::block_on(
             handle.read(move |workspace| workspace.folder(&id).map(|folder| folder.name.clone())),
         )
@@ -123,11 +128,46 @@ mod tests {
     fn update_never_overwrites_corrupted_data() {
         let handle = memory_handle();
         futures_lite::future::block_on(handle.run(|store| store.set_raw("{not json")));
-        let result =
-            futures_lite::future::block_on(handle.update(|workspace| workspace.add_folder("Work")));
+        let result = futures_lite::future::block_on(
+            handle.update_with_preferences(|workspace, _| workspace.add_folder("Work")),
+        );
         assert!(result.is_err());
         let raw = futures_lite::future::block_on(handle.run(|store| store.raw()));
         assert_eq!(raw, "{not json");
+    }
+
+    #[test]
+    fn update_with_preferences_sees_the_current_keys() {
+        use crate::preferences::NewTodoAt;
+        let handle = memory_handle();
+        let seen = |handle: &StoreHandle| {
+            futures_lite::future::block_on(
+                handle.update_with_preferences(|_, preferences| preferences.new_todo_at),
+            )
+            .unwrap()
+        };
+        assert_eq!(seen(&handle), NewTodoAt::Bottom);
+        futures_lite::future::block_on(
+            handle.run(|store| store.set_string("new-todo-position", "top")),
+        );
+        assert_eq!(seen(&handle), NewTodoAt::Top);
+    }
+
+    #[test]
+    fn quick_add_destination_follows_quick_add_target() {
+        let handle = memory_handle();
+        let destination =
+            || futures_lite::future::block_on(handle.quick_add_destination()).unwrap();
+        futures_lite::future::block_on(handle.update_with_preferences(|workspace, _| {
+            let folder = workspace.add_folder("Work").unwrap();
+            workspace.add_list(&folder, "Inbox");
+        }))
+        .unwrap();
+        assert!(destination().is_some());
+        futures_lite::future::block_on(
+            handle.run(|store| store.set_string("quick-add-target", "ask")),
+        );
+        assert_eq!(destination(), None);
     }
 
     #[test]

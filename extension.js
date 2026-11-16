@@ -13,8 +13,6 @@ import { markdownToMarkup, firstLink, noteBlocks } from "./markdown.js";
 import { isEmpty } from "./utils.js";
 import { QuickAdd } from "./quickAdd.js";
 
-const MENU_WIDTH = 440;
-const SCROLL_MAX_HEIGHT = 380;
 const MAX_INPUT_CHARS = 200;
 const MAX_NOTES_CHARS = 5000;
 const NOTES_INDENT = "    ";
@@ -28,6 +26,10 @@ const PULSE_ANIMATION_TIME = 300;
 const BURST_ANIMATION_TIME = 450;
 const BURST_PARTICLES = 8;
 const BURST_DISTANCE = 22;
+/** Where the icon goes in each top bar box: after Activities, after the clock, before the system icons */
+const PANEL_INDEX = { left: -1, center: -1, right: 0 };
+/** Added to the menu, the quick add and the burst dots when the theme follows GNOME's accent color */
+const SYSTEM_THEME_CLASS = "organizedtodo-system";
 
 const SCREEN = {
     FOLDERS: "folders",
@@ -45,6 +47,9 @@ const DEPTH = {
     [SCREEN.TODOS]: 3,
     [SCREEN.NOTES]: 4,
 };
+
+/** Pending tasks of the active projects: shown on Projects' header and next to the panel icon */
+const pendingCount = (client) => client.getFolders(false).reduce((total, folder) => total + undoneCount(folder), 0);
 
 // A function, not a constant: gettext needs the extension instance, which does not exist at import time
 const inputHint = (screen) => ({
@@ -131,25 +136,52 @@ export default class TodoListExtension extends Extension {
     _shownRows = null;
     /** { listId, index } of the todo whose check was just clicked, pulsed on the next render */
     _pulse = null;
+    /** Counts redraws, to tell whether the one a daemon call caused already happened */
+    _renders = 0;
     /** Where the panel icon is, as the menu's scaling origin [x, y] */
     _iconPivot = [0.5, 0];
     /** { draft } while the notes screen is in edit mode, or null. Kept when the menu closes. */
     _editingNotes = null;
     /** The quick add dialog while it is open, or null */
     _quickAdd = null;
+    _settings = null;
+    /** Handler ids on _settings, disconnected on disable */
+    _settingsIds = [];
+    /** Number of pending tasks next to the panel icon; hidden unless show-pending-count */
+    _countLabel = null;
 
     enable() {
         this._client = new TodoClient(() => this._onWorkspaceChanged());
+        this._settings = this.getSettings();
         this._view = { screen: SCREEN.FOLDERS };
         this._button = new PanelMenu.Button(0.0, this.metadata.name, false);
-        this._button.add_child(new St.Icon({
+        const indicator = new St.BoxLayout({ style_class: "organizedtodo-panel-box" });
+        indicator.add_child(new St.Icon({
             gicon: Gio.icon_new_for_string(`${this.path}/icons/organizedtodo.svg`),
             style_class: "organizedtodo-panel-icon",
         }));
-        Main.panel.addToStatusArea(this.uuid, this._button);
+        this._countLabel = new St.Label({
+            style_class: "organizedtodo-panel-count",
+            y_align: Clutter.ActorAlign.CENTER,
+            visible: false,
+        });
+        indicator.add_child(this._countLabel);
+        this._button.add_child(indicator);
+        const position = this._settings.get_string("panel-position");
+        Main.panel.addToStatusArea(this.uuid, this._button, PANEL_INDEX[position], position);
         this._buildMenu();
         this._render();
         this._bindShortcut();
+        this._settingsIds = [
+            this._settings.connect("changed::panel-position", () => this._moveButton()),
+            this._settings.connect("changed::show-pending-count", () => this._updateCount()),
+            this._settings.connect("changed::menu-width", () => this._applySize()),
+            this._settings.connect("changed::menu-height", () => this._applySize()),
+            this._settings.connect("changed::theme", () => this._applyTheme()),
+        ];
+        this._updateCount();
+        this._applySize();
+        this._applyTheme();
         this._client.connect().catch((e) => console.error(`organizedtodo: cannot reach the daemon: ${e}`));
     }
 
@@ -161,10 +193,16 @@ export default class TodoListExtension extends Extension {
         this._pulse = null;
         Main.wm.removeKeybinding("open-organizedtodo");
         Main.wm.removeKeybinding("quick-add");
+        for (const id of this._settingsIds) {
+            this._settings.disconnect(id);
+        }
+        this._settingsIds = [];
+        this._settings = null;
         this._quickAdd?.close();
         this._quickAdd = null;
         this._button?.destroy();
         this._button = null;
+        this._countLabel = null;
         this._mainBox = null;
         this._header = null;
         this._content = null;
@@ -185,7 +223,6 @@ export default class TodoListExtension extends Extension {
         this._mainBox = new St.BoxLayout({
             vertical: true,
             style_class: "organizedtodo-main",
-            style: `width: ${MENU_WIDTH}px;`,
         });
         this._header = new St.BoxLayout({
             style_class: "organizedtodo-header",
@@ -198,7 +235,6 @@ export default class TodoListExtension extends Extension {
         });
         this._scroll = new St.ScrollView({
             style_class: "vfade organizedtodo-scroll",
-            style: `max-height: ${SCROLL_MAX_HEIGHT}px;`,
             hscrollbar_policy: St.PolicyType.NEVER,
             overlay_scrollbars: true,
         });
@@ -221,7 +257,6 @@ export default class TodoListExtension extends Extension {
         this._mainBox.add_child(this._footer);
         this._button.menu.box.add_child(this._mainBox);
         this._followIconPivot();
-        // Half-finished interactions should not survive closing the menu
         this._button.menu.connect("open-state-changed", (_menu, isOpen) => {
             if (isOpen) {
                 this._growFromIcon();
@@ -233,12 +268,29 @@ export default class TodoListExtension extends Extension {
             if (isOpen && this._client?.error) {
                 this._send(this._client.refresh());
             }
-            if (!isOpen && (this._renaming || this._pendingDelete)) {
-                this._renaming = null;
-                this._pendingDelete = null;
-                this._render();
+            if (!isOpen) {
+                this._resetOnClose();
             }
         });
+    }
+
+    /**
+     * Half-finished renames and deletes do not survive closing the menu. With open-on "projects",
+     * neither does the screen, except the notes while a draft is open: it would be lost.
+     */
+    _resetOnClose() {
+        const toProjects = this._settings.get_string("open-on") === "projects"
+            && !this._editingNotes
+            && this._view.screen !== SCREEN.FOLDERS;
+        if (!toProjects && !this._renaming && !this._pendingDelete) {
+            return;
+        }
+        this._renaming = null;
+        this._pendingDelete = null;
+        if (toProjects) {
+            this._view = { screen: SCREEN.FOLDERS };
+        }
+        this._render();
     }
 
     /**
@@ -286,6 +338,42 @@ export default class TodoListExtension extends Extension {
         });
     }
 
+    /** The top bar has no public way to move an indicator: its boxes are private fields */
+    _moveButton() {
+        const position = this._settings.get_string("panel-position");
+        const box = { left: Main.panel._leftBox, center: Main.panel._centerBox, right: Main.panel._rightBox }[position];
+        const container = this._button.container;
+        container.get_parent()?.remove_child(container);
+        box.insert_child_at_index(container, PANEL_INDEX[position]);
+    }
+
+    /** Shown only when the setting is on and something is pending: a "0" would be noise */
+    _updateCount() {
+        const count = pendingCount(this._client);
+        this._countLabel.text = String(count);
+        this._countLabel.visible = this._settings.get_boolean("show-pending-count") && count > 0;
+    }
+
+    /** Width of the whole menu; the task area scrolls past the height */
+    _applySize() {
+        this._mainBox.style = `width: ${this._settings.get_int("menu-width")}px;`;
+        this._scroll.style = `max-height: ${this._settings.get_int("menu-height")}px;`;
+    }
+
+    /** "" or the class that switches stylesheet.css to GNOME's accent color */
+    _themeClass() {
+        return this._settings.get_string("theme") === "system" ? SYSTEM_THEME_CLASS : "";
+    }
+
+    _applyTheme() {
+        if (this._themeClass()) {
+            this._mainBox.add_style_class_name(SYSTEM_THEME_CLASS);
+        }
+        else {
+            this._mainBox.remove_style_class_name(SYSTEM_THEME_CLASS);
+        }
+    }
+
     _bindShortcut() {
         Main.wm.addKeybinding("open-organizedtodo", this.getSettings(), Meta.KeyBindingFlags.NONE, Shell.ActionMode.ALL, () => {
             this._button?.menu.toggle();
@@ -310,7 +398,10 @@ export default class TodoListExtension extends Extension {
         if (!this._client || this._quickAdd) {
             return;
         }
-        this._quickAdd = new QuickAdd(this._client, destination, () => { this._quickAdd = null; });
+        this._quickAdd = new QuickAdd(this._client, destination, () => { this._quickAdd = null; }, {
+            themeClass: this._themeClass(),
+            keepOpen: this._settings.get_boolean("quick-add-keep-open"),
+        });
         this._quickAdd.open();
     }
 
@@ -367,6 +458,7 @@ export default class TodoListExtension extends Extension {
 
     /** Daemon data changed (from here or elsewhere): redraw, unless a drag is running. */
     _onWorkspaceChanged() {
+        this._updateCount();
         if (this._dragging) {
             this._pendingRerender = true;
             return;
@@ -382,6 +474,7 @@ export default class TodoListExtension extends Extension {
     // -------------------------------------------------------------- render
 
     _render() {
+        this._renders++;
         const folder = this._view.folderId
             ? this._client.getFolder(this._view.folderId)
             : null;
@@ -495,16 +588,31 @@ export default class TodoListExtension extends Extension {
         }
     }
 
-    /** Dots flying out of a check that was just marked done. They live above the menu, then vanish. */
+    /**
+     * Dots flying out of a check that was just marked done. They live above the menu, then vanish.
+     * A check scrolled out of sight bursts from the edge it is hidden behind, into the list.
+     */
     _burstFrom(actor) {
         const [x, y] = actor.get_transformed_position();
         const [width, height] = actor.get_transformed_size();
+        const centerX = x + width / 2;
+        let centerY = y + height / 2;
+        // All around by default; half a circle when the dots come in from an edge
+        let [firstAngle, sweep, offset] = [0, 2 * Math.PI, 0];
+        const [, top] = this._scroll.get_transformed_position();
+        const bottom = top + this._scroll.get_transformed_size()[1];
+        if (centerY > bottom) {
+            [centerY, firstAngle, sweep, offset] = [bottom, Math.PI, Math.PI, 0.5]; // upwards
+        }
+        else if (centerY < top) {
+            [centerY, firstAngle, sweep, offset] = [top, 0, Math.PI, 0.5]; // downwards
+        }
         for (let i = 0; i < BURST_PARTICLES; i++) {
-            const angle = (2 * Math.PI * i) / BURST_PARTICLES;
+            const angle = firstAngle + (sweep * (i + offset)) / BURST_PARTICLES;
             // The dots take turns in the colors of the panel icon
-            const dot = new St.Widget({ style_class: `organizedtodo-burst organizedtodo-burst-${i % 3}` });
+            const dot = new St.Widget({ style_class: `organizedtodo-burst organizedtodo-burst-${i % 3} ${this._themeClass()}` });
             Main.uiGroup.add_child(dot);
-            dot.set_position(x + width / 2 - 3, y + height / 2 - 3);
+            dot.set_position(centerX - 3, centerY - 3);
             dot.ease({
                 translation_x: Math.cos(angle) * BURST_DISTANCE,
                 translation_y: Math.sin(angle) * BURST_DISTANCE,
@@ -523,7 +631,11 @@ export default class TodoListExtension extends Extension {
         if (completed.length) {
             actions.push(this._pillButton(`${_("Completed")} · ${completed.length}`, () => this._navigate({ screen: SCREEN.COMPLETED })));
         }
-        const pending = active.reduce((total, folder) => total + undoneCount(folder), 0);
+        actions.push(this._iconButton("emblem-system-symbolic", "", () => {
+            this._button.menu.close();
+            this.openPreferences();
+        }));
+        const pending = pendingCount(this._client);
         this._buildHeader({
             title: _("Projects"),
             subtitle: plural(pending, _("pending"), _("pending")),
@@ -704,7 +816,7 @@ export default class TodoListExtension extends Extension {
             }
             return Clutter.EVENT_PROPAGATE;
         });
-        // The content scrolls at SCROLL_MAX_HEIGHT; keep the line being typed in view
+        // The content scrolls past menu-height; keep the line being typed in view
         const adjustment = this._scroll.vadjustment ?? this._scroll.vscroll.adjustment;
         const showCursor = () => {
             const rect = text.get_cursor_rect();
@@ -930,7 +1042,7 @@ export default class TodoListExtension extends Extension {
             this._pendingDelete = null;
             this._render();
         }));
-        row.add_child(this._deleteButton(key, hasContent, onDelete));
+        row.add_child(this._deleteButton(key, hasContent && this._settings.get_boolean("confirm-delete"), onDelete));
         return row;
     }
 
@@ -970,20 +1082,32 @@ export default class TodoListExtension extends Extension {
             }),
         });
         check.connect("clicked", async () => {
-            this._pulse = { listId, index };
-            let allDone;
+            const effect = this._settings.get_boolean("completion-effect");
+            const renders = this._renders;
+            let result;
             try {
-                allDone = await this._client.toggleTodo(folderId, listId, index);
+                result = await this._client.toggleTodo(folderId, listId, index);
             }
             catch (e) {
                 console.error(`organizedtodo: daemon call failed: ${e}`);
-                this._pulse = null;
                 return;
             }
             // The extension may have been disabled while waiting for the daemon
-            if (allDone && this._client) {
+            if (!this._client) {
+                return;
+            }
+            if (result.allDone) {
                 // Completing is up to the user: the project row offers it
                 this._navigate({ screen: SCREEN.FOLDERS });
+                return;
+            }
+            if (effect) {
+                // Where the todo is now: done todos may have moved to the bottom
+                this._pulse = { listId, index: result.index };
+                // The redraw with the new state may already be on screen: pulse now, else on that redraw
+                if (this._renders !== renders) {
+                    this._pulseToggled();
+                }
             }
         });
 

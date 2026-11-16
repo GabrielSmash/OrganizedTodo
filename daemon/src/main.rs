@@ -1,5 +1,6 @@
 mod actor;
 mod model;
+mod preferences;
 mod service;
 mod store;
 

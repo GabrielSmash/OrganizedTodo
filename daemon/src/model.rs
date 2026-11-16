@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::preferences::{DoneTodo, NewTodoAt, ProjectCompletion, QuickAddTarget};
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Workspace {
     #[serde(default)]
@@ -67,6 +69,15 @@ impl Folder {
     }
 }
 
+/// What toggle_todo did
+#[derive(Debug, PartialEq, Eq)]
+pub struct Toggled {
+    /// This toggle left every todo of the project done
+    pub all_done: bool,
+    /// Where the todo is now: done todos may move to the bottom
+    pub index: usize,
+}
+
 impl Workspace {
     pub fn folder(&self, folder_id: &str) -> Option<&Folder> {
         self.folders.iter().find(|folder| folder.id == folder_id)
@@ -92,11 +103,16 @@ impl Workspace {
     /// list while it exists in an active project, otherwise the first list of
     /// the first active project; None when there is no list at all.
     /// Completed projects are skipped: adding to one would reactivate it.
+    /// Also None when the user wants to choose every time: the dialog opens on the picker.
     pub fn quick_add_destination(
         &self,
         folder_id: &str,
         list_id: &str,
+        target: QuickAddTarget,
     ) -> Option<(String, String)> {
+        if target == QuickAddTarget::Ask {
+            return None;
+        }
         if let Some(folder) = self.folder(folder_id)
             && !folder.completed
             && folder.list(list_id).is_some()
@@ -189,7 +205,7 @@ impl Workspace {
         folder.lists.len() != before
     }
 
-    pub fn add_todo(&mut self, folder_id: &str, list_id: &str, name: &str) -> bool {
+    pub fn add_todo(&mut self, folder_id: &str, list_id: &str, name: &str, at: NewTodoAt) -> bool {
         let name = name.trim();
         if name.is_empty() {
             return false;
@@ -200,12 +216,18 @@ impl Workspace {
         let Some(list) = folder.list_mut(list_id) else {
             return false;
         };
-        list.todos.push(Todo {
+        let todo = Todo {
             name: name.to_string(),
             is_done: false,
             is_focused: false,
             notes: String::new(),
-        });
+        };
+        let index = match at {
+            NewTodoAt::Bottom => list.todos.len(),
+            // The focused todo is always first: a new one "on top" goes right below it
+            NewTodoAt::Top => usize::from(list.todos.first().is_some_and(|first| first.is_focused)),
+        };
+        list.todos.insert(index, todo);
         // A completed project that gets a pending todo is not completed anymore
         folder.completed = false;
         true
@@ -261,28 +283,44 @@ impl Workspace {
         true
     }
 
-    /// Flip a todo's done state.
-    /// Returns true when this made every todo of the project done; completing
-    /// the project is then up to the user. Unchecking a todo reactivates a
-    /// completed project.
-    pub fn toggle_todo(&mut self, folder_id: &str, list_id: &str, index: usize) -> bool {
-        let Some(folder) = self.folder_mut(folder_id) else {
-            return false;
-        };
-        let Some(todo) = folder
-            .list_mut(list_id)
-            .and_then(|list| list.todos.get_mut(index))
-        else {
-            return false;
-        };
+    /// Flip a todo's done state. When that leaves the whole project done, it is archived
+    /// at once or left for the user's Complete button, as `completion` says.
+    /// Unchecking a todo reactivates a completed project. None when the todo does not exist.
+    pub fn toggle_todo(
+        &mut self,
+        folder_id: &str,
+        list_id: &str,
+        index: usize,
+        done_todo: DoneTodo,
+        completion: ProjectCompletion,
+    ) -> Option<Toggled> {
+        let folder = self.folder_mut(folder_id)?;
+        let list = folder.list_mut(list_id)?;
+        let todo = list.todos.get_mut(index)?;
         todo.is_done = !todo.is_done;
-        let is_done = todo.is_done;
-
-        if !is_done {
+        if !todo.is_done {
+            // Unchecking leaves it where it is, and the project is pending again
             folder.completed = false;
-            return false;
+            return Some(Toggled {
+                all_done: false,
+                index,
+            });
         }
-        !folder.completed && folder.undone_count() == 0
+        let index = match done_todo {
+            DoneTodo::Stay => index,
+            DoneTodo::ToBottom => {
+                let mut todo = list.todos.remove(index);
+                // The focus is for what is being done now: a done todo gives it up
+                todo.is_focused = false;
+                list.todos.push(todo);
+                list.todos.len() - 1
+            }
+        };
+        let all_done = !folder.completed && folder.undone_count() == 0;
+        if all_done && completion == ProjectCompletion::Automatic {
+            folder.completed = true;
+        }
+        Some(Toggled { all_done, index })
     }
 
     /// Focused todo is kept at the top of its list; only one per list.
@@ -414,14 +452,28 @@ mod tests {
     #[test]
     fn add_todo_reactivates_completed_folder() {
         let mut workspace = sample();
-        assert!(!workspace.add_todo("f2", "l3", "  "));
-        assert!(!workspace.add_todo("f2", "nope", "X"));
-        assert!(workspace.add_todo("f2", "l3", " New "));
+        assert!(!workspace.add_todo("f2", "l3", "  ", NewTodoAt::Bottom));
+        assert!(!workspace.add_todo("f2", "nope", "X", NewTodoAt::Bottom));
+        assert!(workspace.add_todo("f2", "l3", " New ", NewTodoAt::Bottom));
         let folder = workspace.folder("f2").unwrap();
         assert!(!folder.completed);
         let todo = folder.list("l3").unwrap().todos.last().unwrap();
         assert_eq!(todo.name, "New");
         assert!(!todo.is_done);
+    }
+
+    #[test]
+    fn add_todo_on_top_goes_first_but_below_the_focused_todo() {
+        let mut workspace = sample();
+        let names = |workspace: &Workspace| -> Vec<String> {
+            let list = workspace.list("f1", "l1").unwrap();
+            list.todos.iter().map(|todo| todo.name.clone()).collect()
+        };
+        assert!(workspace.add_todo("f1", "l1", "first", NewTodoAt::Top));
+        assert_eq!(names(&workspace), ["first", "x", "y"]);
+        assert!(workspace.set_todo_focus("f1", "l1", 2, true)); // y is focused: [y, first, x]
+        assert!(workspace.add_todo("f1", "l1", "second", NewTodoAt::Top));
+        assert_eq!(names(&workspace), ["y", "second", "first", "x"]);
     }
 
     #[test]
@@ -453,40 +505,136 @@ mod tests {
         let mut workspace = sample();
         let pair = |folder: &str, list: &str| Some((folder.to_string(), list.to_string()));
         assert_eq!(
-            workspace.quick_add_destination("f1", "l2"),
+            workspace.quick_add_destination("f1", "l2", QuickAddTarget::Remember),
             pair("f1", "l2")
         );
         // never used, deleted list, or a completed project: first list of the first active project
-        assert_eq!(workspace.quick_add_destination("", ""), pair("f1", "l1"));
         assert_eq!(
-            workspace.quick_add_destination("f1", "gone"),
+            workspace.quick_add_destination("", "", QuickAddTarget::Remember),
             pair("f1", "l1")
         );
         assert_eq!(
-            workspace.quick_add_destination("f2", "l3"),
+            workspace.quick_add_destination("f1", "gone", QuickAddTarget::Remember),
+            pair("f1", "l1")
+        );
+        assert_eq!(
+            workspace.quick_add_destination("f2", "l3", QuickAddTarget::Remember),
             pair("f1", "l1")
         );
         // an active project without lists is skipped
         let empty = workspace.add_folder("Empty").unwrap();
         workspace.folders.rotate_right(1);
         assert_eq!(workspace.folders[0].id, empty);
-        assert_eq!(workspace.quick_add_destination("", ""), pair("f1", "l1"));
+        assert_eq!(
+            workspace.quick_add_destination("", "", QuickAddTarget::Remember),
+            pair("f1", "l1")
+        );
         // no list anywhere
         assert!(workspace.remove_folder("f1"));
-        assert_eq!(workspace.quick_add_destination("", ""), None);
+        assert_eq!(
+            workspace.quick_add_destination("", "", QuickAddTarget::Remember),
+            None
+        );
+    }
+
+    #[test]
+    fn quick_add_destination_is_none_when_the_user_chooses_every_time() {
+        let workspace = sample();
+        assert_eq!(
+            workspace.quick_add_destination("f1", "l2", QuickAddTarget::Ask),
+            None
+        );
+        assert!(
+            workspace
+                .quick_add_destination("f1", "l2", QuickAddTarget::Remember)
+                .is_some()
+        );
     }
 
     #[test]
     fn toggle_reports_all_done_without_completing_folder() {
         let mut workspace = sample();
-        assert!(!workspace.toggle_todo("f1", "l1", 1));
-        assert!(workspace.toggle_todo("f1", "l2", 0));
+        let all_done = |toggled: Option<Toggled>| toggled.unwrap().all_done;
+        assert!(!all_done(workspace.toggle_todo(
+            "f1",
+            "l1",
+            1,
+            DoneTodo::Stay,
+            ProjectCompletion::Button
+        )));
+        assert!(all_done(workspace.toggle_todo(
+            "f1",
+            "l2",
+            0,
+            DoneTodo::Stay,
+            ProjectCompletion::Button
+        )));
         assert!(!workspace.folder("f1").unwrap().completed);
         // Completing is the user's choice; unchecking a todo still reactivates
         assert!(workspace.set_folder_completed("f1", true));
-        assert!(!workspace.toggle_todo("f1", "l2", 0));
+        assert!(!all_done(workspace.toggle_todo(
+            "f1",
+            "l2",
+            0,
+            DoneTodo::Stay,
+            ProjectCompletion::Button
+        )));
         assert!(!workspace.folder("f1").unwrap().completed);
-        assert!(!workspace.toggle_todo("f1", "l2", 9));
+        assert_eq!(
+            workspace.toggle_todo("f1", "l2", 9, DoneTodo::Stay, ProjectCompletion::Button),
+            None
+        );
+    }
+
+    #[test]
+    fn done_todo_to_bottom_moves_it_drops_its_focus_and_reports_where() {
+        let mut workspace = sample(); // l1: [x (done), y]
+        let names = |workspace: &Workspace| -> Vec<String> {
+            let list = workspace.list("f1", "l1").unwrap();
+            list.todos.iter().map(|todo| todo.name.clone()).collect()
+        };
+        assert!(workspace.add_todo("f1", "l1", "z", NewTodoAt::Bottom)); // [x, y, z]
+        assert!(workspace.set_todo_focus("f1", "l1", 1, true)); // [y (focused), x, z]
+        assert_eq!(
+            workspace.toggle_todo("f1", "l1", 0, DoneTodo::ToBottom, ProjectCompletion::Button),
+            Some(Toggled {
+                all_done: false,
+                index: 2
+            })
+        );
+        assert_eq!(names(&workspace), ["x", "z", "y"]);
+        let moved = &workspace.list("f1", "l1").unwrap().todos[2];
+        assert!(moved.is_done && !moved.is_focused);
+        // Unchecking leaves it at the bottom
+        assert_eq!(
+            workspace.toggle_todo("f1", "l1", 2, DoneTodo::ToBottom, ProjectCompletion::Button),
+            Some(Toggled {
+                all_done: false,
+                index: 2
+            })
+        );
+        assert_eq!(names(&workspace), ["x", "z", "y"]);
+    }
+
+    #[test]
+    fn automatic_completion_archives_the_project_with_its_last_todo() {
+        let mut workspace = sample(); // f1: l1 [x (done), y], l2 [z]
+        let toggle = |workspace: &mut Workspace, list: &str, index: usize| {
+            workspace
+                .toggle_todo(
+                    "f1",
+                    list,
+                    index,
+                    DoneTodo::Stay,
+                    ProjectCompletion::Automatic,
+                )
+                .unwrap()
+                .all_done
+        };
+        assert!(!toggle(&mut workspace, "l1", 1)); // z still pending
+        assert!(!workspace.folder("f1").unwrap().completed);
+        assert!(toggle(&mut workspace, "l2", 0)); // the last one
+        assert!(workspace.folder("f1").unwrap().completed);
     }
 
     #[test]

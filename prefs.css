@@ -1,0 +1,20 @@
+/* Only inside our window: every extension's preferences share one process and one display.
+   Colors match the menu: dark surfaces, accents from the panel icon (#4e5fc0 → #9a58a8 → #f0568c) */
+window.organizedtodo-prefs {
+    --window-bg-color: #1e1e24;
+    --window-fg-color: #ffffff;
+    --view-bg-color: #1e1e24;
+    --view-fg-color: #ffffff;
+    --headerbar-bg-color: #26262e;
+    --headerbar-fg-color: #ffffff;
+    --headerbar-backdrop-color: #1e1e24;
+    --card-bg-color: rgba(255, 255, 255, 0.06);
+    --card-fg-color: #ffffff;
+    --popover-bg-color: #2c2c36;
+    --popover-fg-color: #ffffff;
+    --dialog-bg-color: #26262e;
+    --dialog-fg-color: #ffffff;
+    --accent-bg-color: #9a58a8;
+    --accent-fg-color: #ffffff;
+    --accent-color: #d29ade;
+}

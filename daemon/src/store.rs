@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use gio::prelude::*;
 
 use crate::model::Workspace;
+use crate::preferences::{DoneTodo, NewTodoAt, Preferences, ProjectCompletion, QuickAddTarget};
 
 const SCHEMA_ID: &str = "org.gnome.shell.extensions.organizedtodo";
 const EXTENSION_UUID: &str = "organizedtodo@gabrielsmash.github.io";
@@ -63,6 +64,29 @@ impl Store {
             .map_err(|error| error.to_string())
     }
 
+    /// The schema's <choices> only allow these strings; anything else falls back to the default
+    pub fn preferences(&self) -> Preferences {
+        let key = |name: &str| self.settings.string(name);
+        Preferences {
+            new_todo_at: match key("new-todo-position").as_str() {
+                "top" => NewTodoAt::Top,
+                _ => NewTodoAt::Bottom,
+            },
+            done_todo: match key("done-todo-position").as_str() {
+                "bottom" => DoneTodo::ToBottom,
+                _ => DoneTodo::Stay,
+            },
+            project_completion: match key("project-completion").as_str() {
+                "automatic" => ProjectCompletion::Automatic,
+                _ => ProjectCompletion::Button,
+            },
+            quick_add_target: match key("quick-add-target").as_str() {
+                "ask" => QuickAddTarget::Ask,
+                _ => QuickAddTarget::Remember,
+            },
+        }
+    }
+
     #[cfg(test)]
     pub fn raw(&self) -> String {
         self.settings.string(WORKSPACE_KEY).to_string()
@@ -71,6 +95,11 @@ impl Store {
     #[cfg(test)]
     pub fn set_raw(&self, raw: &str) {
         self.settings.set_string(WORKSPACE_KEY, raw).unwrap();
+    }
+
+    #[cfg(test)]
+    pub fn set_string(&self, key: &str, value: &str) {
+        self.settings.set_string(key, value).unwrap();
     }
 }
 
@@ -106,6 +135,25 @@ mod tests {
         assert_eq!(
             store.last_destination(),
             ("f1".to_string(), "l1".to_string())
+        );
+    }
+
+    #[test]
+    fn preferences_default_to_todays_behavior_and_follow_the_keys() {
+        let store = memory_store();
+        assert_eq!(store.preferences(), Preferences::default());
+        store.set_string("new-todo-position", "top");
+        store.set_string("done-todo-position", "bottom");
+        store.set_string("project-completion", "automatic");
+        store.set_string("quick-add-target", "ask");
+        assert_eq!(
+            store.preferences(),
+            Preferences {
+                new_todo_at: NewTodoAt::Top,
+                done_todo: DoneTodo::ToBottom,
+                project_completion: ProjectCompletion::Automatic,
+                quick_add_target: QuickAddTarget::Ask,
+            }
         );
     }
 
