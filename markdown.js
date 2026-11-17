@@ -35,17 +35,41 @@ const escapeMarkup = (text) => text
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+/** Colors written into the Pango markup: CSS cannot reach inside a label's text */
+const PALETTES = {
+    dark: {
+        inlineCode: `background="#ffffff" bgalpha="15%"`,
+        comment: `foreground="#9a9996" style="italic"`,
+        string: `foreground="#8ff0a4"`,
+        number: `foreground="#ffbe6f"`,
+        constant: `foreground="#ffbe6f"`,
+        keyword: `foreground="#dc8add"`,
+        function: `foreground="#99c1f1"`,
+    },
+    // Darker shades of the same hues, readable on the light theme's white
+    light: {
+        inlineCode: `background="#000000" bgalpha="8%"`,
+        comment: `foreground="#6e6e73" style="italic"`,
+        string: `foreground="#1a7f37"`,
+        number: `foreground="#b35900"`,
+        constant: `foreground="#b35900"`,
+        keyword: `foreground="#8a3f99"`,
+        function: `foreground="#1a5fb4"`,
+    },
+};
+
 /** Pango markup, for labels. */
-const MARKUP = {
+const markupFor = (palette) => ({
     text: escapeMarkup,
     quote: (inner) => `<span style="italic" fgalpha="70%">▎ ${inner}</span>`,
     item: (inner) => `• ${inner}`,
-    code: (inner) => `<span font_family="monospace" background="#ffffff" bgalpha="15%">${inner}</span>`,
+    code: (inner) => `<span font_family="monospace" ${palette.inlineCode}>${inner}</span>`,
     bold: (inner) => `<b>${inner}</b>`,
     italic: (inner) => `<i>${inner}</i>`,
     strike: (inner) => `<s>${inner}</s>`,
     link: (inner) => `<u>${inner}</u>`,
-};
+});
+const MARKUP = { dark: markupFor(PALETTES.dark), light: markupFor(PALETTES.light) };
 
 const HEADING_SIZES = ["x-large", "large", "medium"];
 
@@ -133,15 +157,6 @@ function renderNoteLine(line, out) {
 
 // ---- code blocks: light syntax highlighting, one regex per language ----
 
-const CODE_COLORS = {
-    comment: `foreground="#9a9996" style="italic"`,
-    string: `foreground="#8ff0a4"`,
-    number: `foreground="#ffbe6f"`,
-    constant: `foreground="#ffbe6f"`,
-    keyword: `foreground="#dc8add"`,
-    function: `foreground="#99c1f1"`,
-};
-
 // Strings on one line, which may hold a quote escaped with a backslash
 const QUOTED = String.raw`"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'`;
 const C_COMMENT = String.raw`\/\/.*|\/\*[\s\S]*?\*\/`;
@@ -217,7 +232,7 @@ function tokenKind(syntax, [, comment, string, number, word], after) {
 }
 
 /** Code as Pango markup, colored when the language is known; otherwise only escaped. */
-function highlightCode(code, language) {
+function highlightCode(code, language, palette) {
     const syntax = SYNTAX[LANGUAGE_NAMES[language.toLowerCase()]];
     if (!syntax) {
         return escapeMarkup(code);
@@ -229,7 +244,7 @@ function highlightCode(code, language) {
         const kind = tokenKind(syntax, match, code.slice(end));
         const token = escapeMarkup(match[0]);
         result += escapeMarkup(code.slice(last, match.index));
-        result += kind ? `<span ${CODE_COLORS[kind]}>${token}</span>` : token;
+        result += kind ? `<span ${palette[kind]}>${token}</span>` : token;
         last = end;
     }
     return result + escapeMarkup(code.slice(last));
@@ -245,12 +260,13 @@ const FENCE = /^\s*```([^`]*)$/;
  * `code` tells the UI to draw it as a box.
  * An unclosed block runs to the end.
  */
-export function noteBlocks(text) {
+export function noteBlocks(text, { light = false } = {}) {
+    const theme = light ? "light" : "dark";
     const blocks = [];
     let code = null;
     let language = "";
     const closeCode = () => {
-        blocks.push({ markup: highlightCode(code.join("\n"), language), link: null, code: true });
+        blocks.push({ markup: highlightCode(code.join("\n"), language, PALETTES[theme]), link: null, code: true });
         code = null;
     };
     for (const line of text.split("\n")) {
@@ -269,7 +285,7 @@ export function noteBlocks(text) {
             code.push(line);
             continue;
         }
-        blocks.push({ markup: renderNoteLine(line, MARKUP), link: firstLink(line), code: false });
+        blocks.push({ markup: renderNoteLine(line, MARKUP[theme]), link: firstLink(line), code: false });
     }
     if (code !== null) {
         closeCode();
@@ -277,7 +293,7 @@ export function noteBlocks(text) {
     return blocks;
 }
 
-export const markdownToMarkup = (text) => render(text, MARKUP);
+export const markdownToMarkup = (text, { light = false } = {}) => render(text, MARKUP[light ? "light" : "dark"]);
 export const markdownToPlain = (text) => render(text, PLAIN);
 
 /** First link in `text` that is safe to open (web or e-mail), or null. */

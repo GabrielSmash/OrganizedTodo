@@ -10,7 +10,7 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as DND from "resource:///org/gnome/shell/ui/dnd.js";
 import { TodoClient, undoneCount, todoCount } from "./client.js";
 import { markdownToMarkup, firstLink, noteBlocks } from "./markdown.js";
-import { isEmpty } from "./utils.js";
+import { isEmpty, isLight, LIGHT_THEME_CLASS } from "./utils.js";
 import { QuickAdd } from "./quickAdd.js";
 
 const MAX_INPUT_CHARS = 200;
@@ -28,8 +28,6 @@ const BURST_PARTICLES = 8;
 const BURST_DISTANCE = 22;
 /** Where the icon goes in each top bar box: after Activities, after the clock, before the system icons */
 const PANEL_INDEX = { left: -1, center: -1, right: 0 };
-/** Added to the menu, the quick add and the burst dots when the theme follows GNOME's accent color */
-const SYSTEM_THEME_CLASS = "organizedtodo-system";
 
 const SCREEN = {
     FOLDERS: "folders",
@@ -169,9 +167,12 @@ export default class TodoListExtension extends Extension {
         this._button.add_child(indicator);
         const position = this._settings.get_string("panel-position");
         Main.panel.addToStatusArea(this.uuid, this._button, PANEL_INDEX[position], position);
+        // GNOME's own light/dark preference, for theme "system"; read already by the first render
+        this._interfaceSettings = new Gio.Settings({ schema_id: "org.gnome.desktop.interface" });
         this._buildMenu();
         this._render();
         this._bindShortcut();
+        this._colorSchemeId = this._interfaceSettings.connect("changed::color-scheme", () => this._applyTheme());
         this._settingsIds = [
             this._settings.connect("changed::panel-position", () => this._moveButton()),
             this._settings.connect("changed::show-pending-count", () => this._updateCount()),
@@ -197,6 +198,8 @@ export default class TodoListExtension extends Extension {
             this._settings.disconnect(id);
         }
         this._settingsIds = [];
+        this._interfaceSettings.disconnect(this._colorSchemeId);
+        this._interfaceSettings = null;
         this._settings = null;
         this._quickAdd?.close();
         this._quickAdd = null;
@@ -360,18 +363,23 @@ export default class TodoListExtension extends Extension {
         this._scroll.style = `max-height: ${this._settings.get_int("menu-height")}px;`;
     }
 
-    /** "" or the class that switches stylesheet.css to GNOME's accent color */
+    /** "" or the class that switches stylesheet.css to the light colors */
     _themeClass() {
-        return this._settings.get_string("theme") === "system" ? SYSTEM_THEME_CLASS : "";
+        const colorScheme = this._interfaceSettings.get_string("color-scheme");
+        return isLight(this._settings.get_string("theme"), colorScheme) ? LIGHT_THEME_CLASS : "";
     }
 
+    /** On the menu's outer actor: its background and arrow come from the shell theme, so they must be restyled too */
     _applyTheme() {
+        const menu = this._button.menu.actor;
         if (this._themeClass()) {
-            this._mainBox.add_style_class_name(SYSTEM_THEME_CLASS);
+            menu.add_style_class_name(LIGHT_THEME_CLASS);
         }
         else {
-            this._mainBox.remove_style_class_name(SYSTEM_THEME_CLASS);
+            menu.remove_style_class_name(LIGHT_THEME_CLASS);
         }
+        // The markdown colors are written into each label's markup, so labels must be rebuilt
+        this._render();
     }
 
     _bindShortcut() {
@@ -760,7 +768,7 @@ export default class TodoListExtension extends Extension {
             this._emptyState(_("📝 No notes"), _("Use the pencil to write; markdown works"));
             return;
         }
-        for (const { markup, link, code } of noteBlocks(todo.notes)) {
+        for (const { markup, link, code } of noteBlocks(todo.notes, { light: this._themeClass() !== "" })) {
             const style_class = code ? "organizedtodo-note-code" : "organizedtodo-note-line";
             const line = this._markupLabel(markup, link, { style_class, x_expand: true });
             line.clutterText.line_wrap = true;
@@ -874,7 +882,7 @@ export default class TodoListExtension extends Extension {
      * When the text has a link, clicking the label opens it (and nothing behind it reacts).
      */
     _markdownLabel(text, props, { struck = false } = {}) {
-        const markup = markdownToMarkup(text);
+        const markup = markdownToMarkup(text, { light: this._themeClass() !== "" });
         return this._markupLabel(struck ? `<s>${markup}</s>` : markup, firstLink(text), { text, ...props });
     }
 

@@ -21,7 +21,7 @@ store["show-pending-count"] = false;
 store["menu-width"] = 440;
 store["menu-height"] = 380;
 store["completion-effect"] = true;
-store.theme = "organizedtodo";
+store.theme = "default";
 store["confirm-delete"] = true;
 store["open-on"] = "last";
 store["quick-add-keep-open"] = false;
@@ -37,6 +37,12 @@ settings.set_boolean = (k, v) => { store[k] = v; settings.emit(`changed::${k}`, 
 settings.get_int = (k) => store[k];
 settings.set_int = (k, v) => { store[k] = v; settings.emit(`changed::${k}`, k); };
 globalThis.__settings = settings;
+// GNOME's interface settings: only color-scheme is read
+const systemStore = { "color-scheme": "prefer-dark" };
+const interfaceSettings = new Actor();
+interfaceSettings.get_string = (k) => systemStore[k];
+interfaceSettings.set_string = (k, v) => { systemStore[k] = v; interfaceSettings.emit(`changed::${k}`, k); };
+globalThis.__systemSettings = { "org.gnome.desktop.interface": interfaceSettings };
 globalThis.__notes = [];
 globalThis.global = { create_app_launch_context: () => null };
 
@@ -121,26 +127,39 @@ await t("menu size follows menu-width and menu-height, live", async () => {
     settings.set_int("menu-height", 380);
 });
 
-await t("theme system puts organizedtodo-system on the menu (live), the quick add and the burst dots", async () => {
+await t("theme: light is always light; system follows GNOME's color-scheme live; applied to the menu, the quick add and the burst dots", async () => {
     const { uiGroup } = await import("resource:///org/gnome/shell/ui/main.js");
-    const burstClasses = () => {
+    const menu = ext._button.menu.actor;
+    const light = () => menu.classes.has("organizedtodo-light");
+    const burstLight = () => {
         ext._burstFrom(new Actor());
-        return uiGroup.children.slice(-8).map((dot) => hasClass(dot, "organizedtodo-system"));
+        return uiGroup.children.slice(-8).every((dot) => hasClass(dot, "organizedtodo-light"));
     };
-    assert.equal(ext._mainBox.classes.has("organizedtodo-system"), false);
-    assert.ok(burstClasses().every((has) => !has));
+    assert.equal(light(), false);
+    assert.equal(burstLight(), false);
 
-    settings.set_string("theme", "system");
-    assert.equal(ext._mainBox.classes.has("organizedtodo-system"), true);
-    assert.ok(burstClasses().every((has) => has));
+    settings.set_string("theme", "light");
+    assert.equal(light(), true);
+    assert.equal(burstLight(), true);
     globalThis.__bound["quick-add"]();
     await flush();
     const dialog = globalThis.__dialogs.at(-1);
-    assert.ok(dialog.styleClass.split(" ").includes("organizedtodo-system"));
+    assert.ok(dialog.styleClass.split(" ").includes("organizedtodo-light"));
     dialog.close();
 
-    settings.set_string("theme", "organizedtodo");
-    assert.equal(ext._mainBox.classes.has("organizedtodo-system"), false);
+    settings.set_string("theme", "system");
+    assert.equal(light(), false, "prefer-dark keeps system dark");
+    interfaceSettings.set_string("color-scheme", "default");
+    assert.equal(light(), true, "no preference is light, as in GNOME apps");
+    interfaceSettings.set_string("color-scheme", "prefer-light");
+    assert.equal(light(), true);
+    interfaceSettings.set_string("color-scheme", "prefer-dark");
+    assert.equal(light(), false);
+
+    settings.set_string("theme", "default");
+    interfaceSettings.set_string("color-scheme", "default");
+    assert.equal(light(), false, "default ignores the system");
+    interfaceSettings.set_string("color-scheme", "prefer-dark");
 });
 
 await t("the icon follows panel-position live: right by default, then left and center", async () => {
@@ -423,6 +442,10 @@ await t("names are drawn as markdown; the stored text stays as typed", async () 
     const title = findAll(ext._content, (x) => hasClass(x, "organizedtodo-row-title"))[0];
     assert.equal(title.text, "**Big** `x`");
     assert.match(title.clutterText.markup, /^<b>Big<\/b> <span font_family="monospace"/);
+    settings.set_string("theme", "light");
+    const relit = findAll(ext._content, (x) => hasClass(x, "organizedtodo-row-title"))[0];
+    assert.match(relit.clutterText.markup, /bgalpha="8%"/, "a theme change redraws the labels with the light markup");
+    settings.set_string("theme", "default");
     await click(mainBtn(rows()[0]));
     assert.match(findAll(ext._header, (x) => hasClass(x, "organizedtodo-title"))[0].clutterText.markup, /<b>Big<\/b>/);
     await type("L");

@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 
@@ -93,6 +94,29 @@ impl StoreHandle {
         self.run(move |store| store.set_last_destination(&folder_id, &list_id))
             .await
     }
+
+    /// Writes every project to a file, as indented JSON.
+    pub async fn export_to(&self, path: PathBuf) -> Result<(), String> {
+        self.run(move |store| {
+            let backup = store.load()?.to_backup()?;
+            std::fs::write(&path, backup)
+                .map_err(|error| format!("cannot write {}: {error}", path.display()))
+        })
+        .await
+    }
+
+    /// Replaces every project with the ones in a backup file; returns how many it has.
+    /// Nothing changes when the file cannot be read or is not a backup.
+    pub async fn import_from(&self, path: PathBuf) -> Result<usize, String> {
+        self.run(move |store| {
+            let raw = std::fs::read_to_string(&path)
+                .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+            let workspace = Workspace::from_backup(&raw)?;
+            store.save(&workspace).map_err(|error| error.to_string())?;
+            Ok(workspace.folders.len())
+        })
+        .await
+    }
 }
 
 #[cfg(test)]
@@ -168,6 +192,35 @@ mod tests {
             handle.run(|store| store.set_string("quick-add-target", "ask")),
         );
         assert_eq!(destination(), None);
+    }
+
+    #[test]
+    fn export_then_import_restores_the_projects_and_a_bad_file_changes_nothing() {
+        use futures_lite::future::block_on;
+        let handle = memory_handle();
+        let path =
+            std::env::temp_dir().join(format!("organizedtodo-test-{}.json", uuid::Uuid::new_v4()));
+        let names = |handle: &StoreHandle| {
+            block_on(handle.read(|workspace| {
+                workspace
+                    .folders
+                    .iter()
+                    .map(|folder| folder.name.clone())
+                    .collect::<Vec<_>>()
+            }))
+            .unwrap()
+        };
+        block_on(handle.update_with_preferences(|workspace, _| workspace.add_folder("Work")))
+            .unwrap();
+        block_on(handle.export_to(path.clone())).unwrap();
+        block_on(handle.update_with_preferences(|workspace, _| workspace.add_folder("Later")))
+            .unwrap();
+        assert_eq!(block_on(handle.import_from(path.clone())).unwrap(), 1);
+        assert_eq!(names(&handle), ["Work"]);
+        std::fs::write(&path, "{}").unwrap();
+        assert!(block_on(handle.import_from(path.clone())).is_err());
+        assert_eq!(names(&handle), ["Work"]);
+        std::fs::remove_file(&path).unwrap();
     }
 
     #[test]

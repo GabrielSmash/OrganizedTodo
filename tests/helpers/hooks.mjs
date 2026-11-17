@@ -14,6 +14,8 @@ const SOURCES = {
         Clone: class { constructor(o) { Object.assign(this, o); } } };`,
     "gi://Gio": `export default {
         icon_new_for_string: (p) => ({ path: p }),
+        // new Gio.Settings({ schema_id }) returns the fake the test registered for that schema
+        Settings: class { constructor({ schema_id }) { return globalThis.__systemSettings[schema_id]; } },
         AppInfo: { launch_default_for_uri: (uri) => { (globalThis.__opened ??= []).push(uri); } } };`,
     "gi://GLib": `export default { markup_escape_text: (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;') };`,
     "gi://Meta": `export default { KeyBindingFlags: { NONE: 0 } };`,

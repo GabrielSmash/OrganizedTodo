@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -128,6 +130,33 @@ impl Workspace {
             })
     }
 
+    /// The workspace as a backup file: the stored JSON, indented to be readable.
+    pub fn to_backup(&self) -> Result<String, String> {
+        serde_json::to_string_pretty(self).map_err(|error| error.to_string())
+    }
+
+    /// Reads a backup file. Stricter than the stored data: a JSON without "folders"
+    /// is not a backup (importing it would wipe everything), and ids must not repeat.
+    pub fn from_backup(raw: &str) -> Result<Workspace, String> {
+        #[derive(Deserialize)]
+        struct Backup {
+            folders: Vec<Folder>,
+        }
+        let backup: Backup = serde_json::from_str(raw)
+            .map_err(|error| format!("not an OrganizedTodo backup: {error}"))?;
+        let mut ids = HashSet::new();
+        for folder in &backup.folders {
+            for id in std::iter::once(&folder.id).chain(folder.lists.iter().map(|list| &list.id)) {
+                if !ids.insert(id.as_str()) {
+                    return Err(format!("the id {id} appears more than once"));
+                }
+            }
+        }
+        Ok(Workspace {
+            folders: backup.folders,
+        })
+    }
+
     pub fn add_folder(&mut self, name: &str) -> Option<String> {
         let name = name.trim();
         if name.is_empty() {
@@ -159,6 +188,13 @@ impl Workspace {
         let before = self.folders.len();
         self.folders.retain(|folder| folder.id != folder_id);
         self.folders.len() != before
+    }
+
+    /// Deletes every completed project; returns how many there were.
+    pub fn remove_completed_folders(&mut self) -> usize {
+        let before = self.folders.len();
+        self.folders.retain(|folder| !folder.completed);
+        before - self.folders.len()
     }
 
     pub fn set_folder_completed(&mut self, folder_id: &str, completed: bool) -> bool {
@@ -635,6 +671,46 @@ mod tests {
         assert!(!workspace.folder("f1").unwrap().completed);
         assert!(toggle(&mut workspace, "l2", 0)); // the last one
         assert!(workspace.folder("f1").unwrap().completed);
+    }
+
+    #[test]
+    fn backup_roundtrip_keeps_everything() {
+        let workspace = sample();
+        let restored = Workspace::from_backup(&workspace.to_backup().unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_string(&restored).unwrap(),
+            serde_json::to_string(&workspace).unwrap()
+        );
+    }
+
+    #[test]
+    fn from_backup_refuses_what_is_not_a_backup() {
+        assert!(Workspace::from_backup("{not json").is_err());
+        assert!(Workspace::from_backup(r#"{"name":"some other file"}"#).is_err());
+        let repeated = r#"{"folders":[
+            {"id":"a","name":"A","lists":[]},
+            {"id":"b","name":"B","lists":[{"id":"a","name":"L","todos":[]}]}]}"#;
+        assert!(
+            Workspace::from_backup(repeated)
+                .unwrap_err()
+                .contains("appears more than once")
+        );
+        // an empty backup is still a backup
+        assert!(
+            Workspace::from_backup(r#"{"folders":[]}"#)
+                .unwrap()
+                .folders
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn remove_completed_folders_keeps_the_active_ones_and_counts() {
+        let mut workspace = sample(); // f1 active, f2 completed
+        assert_eq!(workspace.remove_completed_folders(), 1);
+        assert_eq!(workspace.folders.len(), 1);
+        assert_eq!(workspace.folders[0].id, "f1");
+        assert_eq!(workspace.remove_completed_folders(), 0);
     }
 
     #[test]

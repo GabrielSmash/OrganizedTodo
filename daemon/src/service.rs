@@ -39,10 +39,15 @@ impl TodoService {
             .update_with_preferences(change)
             .await
             .map_err(fdo::Error::Failed)?;
+        Self::notify_changed(emitter).await;
+        Ok(result)
+    }
+
+    /// Tells clients to refresh; a failure is only logged, the change itself is done.
+    async fn notify_changed(emitter: &SignalEmitter<'_>) {
         if let Err(error) = Self::changed(emitter).await {
             eprintln!("organizedtodo: failed to emit Changed: {error}");
         }
-        Ok(result)
     }
 }
 
@@ -56,6 +61,29 @@ impl TodoService {
             .await
             .map_err(fdo::Error::Failed)?;
         json.map_err(|error| fdo::Error::Failed(error.to_string()))
+    }
+
+    /// Writes every project to a JSON file the user chose.
+    async fn export_workspace(&self, path: String) -> fdo::Result<()> {
+        self.store
+            .export_to(path.into())
+            .await
+            .map_err(fdo::Error::Failed)
+    }
+
+    /// Replaces every project with those of a backup file; returns how many there are.
+    async fn import_workspace(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        path: String,
+    ) -> fdo::Result<u32> {
+        let count = self
+            .store
+            .import_from(path.into())
+            .await
+            .map_err(fdo::Error::Failed)?;
+        Self::notify_changed(&emitter).await;
+        Ok(count as u32)
     }
 
     // D-Bus has no optional values: an empty id means nothing was created.
@@ -100,6 +128,17 @@ impl TodoService {
     ) -> fdo::Result<bool> {
         self.update(&emitter, move |workspace| {
             workspace.set_folder_completed(&folder_id, completed)
+        })
+        .await
+    }
+
+    /// Deletes every completed project; returns how many there were.
+    async fn remove_completed_folders(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> fdo::Result<u32> {
+        self.update(&emitter, |workspace| {
+            workspace.remove_completed_folders() as u32
         })
         .await
     }

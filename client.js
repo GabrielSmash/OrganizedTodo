@@ -10,6 +10,16 @@ const INTERFACE_XML = `
     <method name="GetWorkspace">
       <arg type="s" direction="out"/>
     </method>
+    <method name="ExportWorkspace">
+      <arg name="path" type="s" direction="in"/>
+    </method>
+    <method name="ImportWorkspace">
+      <arg name="path" type="s" direction="in"/>
+      <arg type="u" direction="out"/>
+    </method>
+    <method name="RemoveCompletedFolders">
+      <arg type="u" direction="out"/>
+    </method>
     <method name="AddFolder">
       <arg name="name" type="s" direction="in"/>
       <arg type="s" direction="out"/>
@@ -106,6 +116,14 @@ const INTERFACE_XML = `
 </node>`;
 
 const TodoProxy = Gio.DBusProxy.makeProxyWrapper(INTERFACE_XML);
+
+/**
+ * A bare proxy of the daemon, for the preferences window: it makes calls,
+ * it does not need the cached workspace nor the redraws of TodoClient.
+ */
+export function daemonProxy() {
+    return TodoProxy.newAsync(Gio.DBus.session, BUS_NAME, OBJECT_PATH);
+}
 
 /** Pending todos in a folder or in a list. */
 export function undoneCount(node) {

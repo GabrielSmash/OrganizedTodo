@@ -12,6 +12,7 @@ Derived from [Todoit](https://github.com/wassimbj/todoit-gnome), by wassimbj (MI
 - **Inline editing:** rename projects, lists and tasks without opening another screen.
 - **Focus and order:** highlight a task (it is pinned to the top of its list) and drag to reorder.
 - **A single panel icon**, opened by clicking or with the `Alt+Shift+Space` shortcut.
+- **Settings window:** the gear on the Projects screen opens appearance, behavior, shortcuts and backup options.
 - **Quick add from anywhere:** `Super+Alt+T` opens a box in the middle of the current screen to add a task without opening the menu. It remembers the last list you used, and can pick or create another one.
 - **Notes per task:** free text for each task, with full markdown (headings, lists, checkboxes, colored code blocks).
 - **Formatting in names:** simple markdown in projects, lists and tasks; links open with one click.
@@ -162,6 +163,7 @@ The pill next to the name shows how many pending tasks there are.
 - To see completed projects, use the **`Completed · N`** button at the top of Projects (it only shows when there is at least one).
 - Inside Completed you can open a project to look at it, or click **Reactivate** to bring it back.
 - **Unchecking** a task, or **adding** one, in a completed project reactivates it automatically.
+- Prefer no button? **Settings → Behavior → When a project is all done → Archive it** archives the project as soon as its last task is checked.
 
 ### Notes
 
@@ -199,17 +201,22 @@ Languages with colors: Python (`py`), JavaScript/TypeScript (`js`, `ts`), Rust (
 
 Only `http(s)` links and e-mail addresses are opened; other schemes (`file:`, `ssh:`...) are shown as text.
 
-### Change the shortcut
+### Settings
+
+Click the **gear** on the Projects screen, or run `gnome-extensions prefs organizedtodo@gabrielsmash.github.io`.
+Changes apply right away.
+
+| Tab | Options |
+|---|---|
+| Appearance | Theme (Default is dark, Light is white, System follows GNOME's light or dark style; applies to the menu, the quick add and this window), icon position in the top bar, pending count next to the icon, menu width, maximum list height, the burst on done tasks |
+| Behavior | Which screen the menu opens on, confirm before deleting, where new and done tasks go, Complete button or automatic archive, quick add destination and staying open |
+| Shortcuts | Click a shortcut and press the new one; Backspace disables it, the arrow button restores the default |
+| Data | Export and import a backup; delete every archived project |
+
+The shortcuts can also be changed from a terminal:
 
 ```sh
 dconf write /org/gnome/shell/extensions/organizedtodo/open-organizedtodo "['<Super>t']"
-```
-
-It takes effect right away. To go back to the default: `dconf reset /org/gnome/shell/extensions/organizedtodo/open-organizedtodo`.
-
-Quick add has its own shortcut:
-
-```sh
 dconf write /org/gnome/shell/extensions/organizedtodo/quick-add "['<Super><Alt>n']"
 ```
 
@@ -228,6 +235,9 @@ dconf dump /org/gnome/shell/extensions/organizedtodo/ > backup.conf
 # restore
 dconf load /org/gnome/shell/extensions/organizedtodo/ < backup.conf
 ```
+
+**Backup:** Settings → Data → **Export** saves every project, list, task and note to a JSON file, and **Import**
+replaces everything with one (after a confirmation). The `dconf dump` above also keeps your settings.
 
 If you reset dconf (for example, `dconf reset -f /`), you lose your tasks. Back up now and then.
 
@@ -269,10 +279,12 @@ Layout:
 
 | File | Role |
 |---|---|
-| `daemon/` | Rust backend: rules (projects, lists, tasks, completion, quick add destination), persistence and the D-Bus service. |
+| `daemon/` | Rust backend: rules (projects, lists, tasks, completion, quick add destination), persistence, backup files and the D-Bus service. |
 | `client.js` | D-Bus client of the daemon; keeps the copy of the data for the UI. |
 | `extension.js` | The screens and the navigation. |
 | `quickAdd.js` | The quick add box (`Super+Alt+T`). |
+| `prefs.js` | The settings window (runs in its own process, not inside the shell). |
+| `prefs.css` | Colors of the settings window for the OrganizedTodo theme. |
 | `markdown.js` | Markdown → Pango markup: names, notes and code block colors. |
 | `stylesheet.css` | Look. |
 | `icons/` | Panel icon. |

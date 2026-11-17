@@ -329,71 +329,177 @@
     color: #f0568c;
 }
 
-/* ---------- theme "System": GNOME's accent color instead of the icon's gradient ----------
-   The class sits on the menu box and on the quick add dialog (rules match inside them),
-   and on each burst dot itself (rules with both classes, no space). */
-.organizedtodo-system .organizedtodo-accent-btn {
-    background-gradient-direction: none;
-    background-color: -st-accent-color;
+/* ---------- theme "Light" ----------
+   The class sits on the menu's outer actor (popup-menu-boxpointer, which also has popup-menu),
+   on the quick add dialog and on each burst dot. Surface colors are GNOME Shell's own light theme.
+   Every rule here has one class more than the dark rule it replaces, so it wins; a dark :hover/:focus
+   has the same weight as a light base rule, so each one that matters gets a light version too. */
+.organizedtodo-light.popup-menu {
+    color: #222226;
 }
 
-.organizedtodo-system .organizedtodo-accent-btn:hover,
-.organizedtodo-system .organizedtodo-accent-btn:focus {
-    background-color: st-lighten(-st-accent-color, 10%);
+.organizedtodo-light .popup-menu-content {
+    background-color: #fafafb;
+    border: 1px solid #e6e6eb;
 }
 
-.organizedtodo-system .organizedtodo-badge {
-    color: st-lighten(-st-accent-color, 30%);
-    background-gradient-direction: none;
-    background-color: st-transparentize(-st-accent-color, 0.65);
+.organizedtodo-light .organizedtodo-title,
+.organizedtodo-light .organizedtodo-row-title {
+    color: #222226;
 }
 
-.organizedtodo-system .organizedtodo-check:hover,
-.organizedtodo-system .organizedtodo-check:focus {
-    border-color: -st-accent-color;
+.organizedtodo-light .organizedtodo-subtitle,
+.organizedtodo-light .organizedtodo-row-meta {
+    color: rgba(0, 0, 0, 0.55);
 }
 
-.organizedtodo-system .organizedtodo-check-on {
-    border-color: -st-accent-color;
-    background-gradient-direction: none;
-    background-color: -st-accent-color;
+.organizedtodo-light .organizedtodo-icon-btn {
+    color: rgba(0, 0, 0, 0.45);
 }
 
-.organizedtodo-burst-0.organizedtodo-system {
-    background-color: st-darken(-st-accent-color, 10%);
+.organizedtodo-light .organizedtodo-icon-btn:hover,
+.organizedtodo-light .organizedtodo-icon-btn:focus {
+    background-color: rgba(0, 0, 0, 0.08);
+    color: #222226;
 }
 
-.organizedtodo-burst-1.organizedtodo-system {
-    background-color: -st-accent-color;
+.organizedtodo-light .organizedtodo-pill {
+    color: rgba(0, 0, 0, 0.75);
+    background-color: rgba(0, 0, 0, 0.06);
 }
 
-.organizedtodo-burst-2.organizedtodo-system {
-    background-color: st-lighten(-st-accent-color, 20%);
+.organizedtodo-light .organizedtodo-pill:hover,
+.organizedtodo-light .organizedtodo-pill:focus {
+    background-color: rgba(0, 0, 0, 0.12);
 }
 
-.organizedtodo-system .organizedtodo-focused {
-    background-color: st-transparentize(-st-accent-color, 0.85);
+/* The coral of the dark theme is too pale on white */
+.organizedtodo-light .organizedtodo-danger-btn {
+    color: #c7361f;
+    background-color: rgba(199, 54, 31, 0.1);
 }
 
-.organizedtodo-system .organizedtodo-focused .organizedtodo-focus-btn,
-.organizedtodo-system .organizedtodo-notes-on,
-.organizedtodo-system .organizedtodo-quick-add-create {
-    color: st-lighten(-st-accent-color, 20%);
+.organizedtodo-light .organizedtodo-danger-btn:hover,
+.organizedtodo-light .organizedtodo-danger-btn:focus {
+    background-color: rgba(199, 54, 31, 0.18);
 }
 
-.organizedtodo-system .organizedtodo-drag-over {
-    box-shadow: inset 0 2px 0 -st-accent-color;
+.organizedtodo-light .organizedtodo-delete-btn:hover,
+.organizedtodo-light .organizedtodo-delete-btn:focus {
+    color: #c7361f;
 }
 
-.organizedtodo-system .organizedtodo-input:focus {
-    border-color: -st-accent-color;
+.organizedtodo-light .organizedtodo-row:hover {
+    background-color: rgba(0, 0, 0, 0.05);
 }
 
-.organizedtodo-system .organizedtodo-quick-add-target {
-    color: -st-accent-color;
+/* Same gradient, lighter background and a darker text to stay readable */
+.organizedtodo-light .organizedtodo-badge {
+    color: #8a3f99;
+    background-gradient-start: rgba(78, 95, 192, 0.18);
+    background-gradient-end: rgba(240, 86, 140, 0.18);
 }
 
-.organizedtodo-system .organizedtodo-quick-add-option:hover,
-.organizedtodo-system .organizedtodo-quick-add-option:focus {
-    background-color: st-transparentize(-st-accent-color, 0.75);
+.organizedtodo-light .organizedtodo-chevron {
+    color: rgba(0, 0, 0, 0.35);
+}
+
+.organizedtodo-light .organizedtodo-empty-title {
+    color: rgba(0, 0, 0, 0.7);
+}
+
+.organizedtodo-light .organizedtodo-empty-hint {
+    color: rgba(0, 0, 0, 0.45);
+}
+
+/* Also the quick add's entry, which has the same class. The shell theme's caret and hint are made for dark */
+.organizedtodo-light .organizedtodo-input {
+    color: #222226;
+    caret-color: #222226;
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.organizedtodo-light .organizedtodo-input:focus {
+    background-color: rgba(0, 0, 0, 0.03);
+}
+
+.organizedtodo-light .organizedtodo-input StLabel.hint-text {
+    color: rgba(0, 0, 0, 0.45);
+}
+
+.organizedtodo-light .organizedtodo-todo-label,
+.organizedtodo-light .organizedtodo-note-line {
+    color: #222226;
+}
+
+.organizedtodo-light .organizedtodo-done .organizedtodo-todo-label {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+.organizedtodo-light .organizedtodo-check {
+    border-color: rgba(0, 0, 0, 0.35);
+}
+
+/* Both lose to the light base rule above (same or lower weight), so they are repeated */
+.organizedtodo-light .organizedtodo-check:hover,
+.organizedtodo-light .organizedtodo-check:focus,
+.organizedtodo-light .organizedtodo-check-on {
+    border-color: #9a58a8;
+}
+
+.organizedtodo-light .organizedtodo-focused {
+    background-color: rgba(154, 88, 168, 0.12);
+}
+
+/* The bright pink of the dark theme is too pale for a symbolic icon on white */
+.organizedtodo-light .organizedtodo-focused .organizedtodo-focus-btn,
+.organizedtodo-light .organizedtodo-notes-on {
+    color: #c43c6e;
+}
+
+.organizedtodo-light .organizedtodo-note-code {
+    color: #222226;
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.organizedtodo-light .organizedtodo-drag-btn {
+    color: rgba(0, 0, 0, 0.3);
+}
+
+.organizedtodo-light .organizedtodo-drag-btn:hover {
+    color: #222226;
+}
+
+.organizedtodo-light .organizedtodo-dragging {
+    background-color: rgba(0, 0, 0, 0.08);
+}
+
+/* Quick add: the class is on the dialog box itself (the element with modal-dialog), so no space */
+.organizedtodo-light.organizedtodo-quick-add {
+    color: #222226;
+    background-color: #fafafb;
+}
+
+.organizedtodo-light .organizedtodo-quick-add-target {
+    color: #8a3f99;
+}
+
+.organizedtodo-light .organizedtodo-quick-add-option:hover,
+.organizedtodo-light .organizedtodo-quick-add-option:focus {
+    background-color: rgba(154, 88, 168, 0.15);
+}
+
+.organizedtodo-light .organizedtodo-quick-add-create {
+    color: #c43c6e;
+}
+
+/* The shell theme styles these buttons with three classes; four here, so this wins (values from GNOME's light theme) */
+.organizedtodo-light.organizedtodo-quick-add .modal-dialog-button-box .modal-dialog-button {
+    color: #222226;
+    background-color: rgba(34, 34, 38, 0.1);
+}
+
+.organizedtodo-light.organizedtodo-quick-add .modal-dialog-button-box .modal-dialog-button:hover,
+.organizedtodo-light.organizedtodo-quick-add .modal-dialog-button-box .modal-dialog-button:focus {
+    background-color: rgba(34, 34, 38, 0.16);
 }

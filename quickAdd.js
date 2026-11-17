@@ -16,7 +16,7 @@ export class QuickAdd {
     /**
      * destination: { folderId, listId } from the daemon, or null when there is no list yet.
      * onClosed runs once the dialog is gone, however it was closed.
-     * themeClass: "" or the class for GNOME's accent color (see extension.js).
+     * themeClass: "" or the light theme's class (see utils.js).
      * keepOpen: after adding, clear the entry for the next task instead of closing.
      */
     constructor(client, destination, onClosed, { themeClass = "", keepOpen = false } = {}) {

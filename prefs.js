@@ -1,12 +1,21 @@
 // Preferences window. It runs in its own process, not inside GNOME Shell:
-// it talks to the extension and the daemon only through GSettings keys.
+// options reach the extension and the daemon through GSettings keys; the Data
+// page (backup, cleanup) calls the daemon over D-Bus.
 import Adw from "gi://Adw";
 import Gdk from "gi://Gdk";
 import Gio from "gi://Gio";
+import GLib from "gi://GLib";
 import Gtk from "gi://Gtk";
 import { ExtensionPreferences, gettext as _ } from "resource:///org/gnome/Shell/Extensions/js/extensions/prefs.js";
+import { daemonProxy } from "./client.js";
+import { isLight, LIGHT_THEME_CLASS } from "./utils.js";
 
-const THEMES = ["organizedtodo", "system"];
+// GTK's dialogs report back through callbacks; once promisified they can be awaited
+Gio._promisify(Gtk.FileDialog.prototype, "save", "save_finish");
+Gio._promisify(Gtk.FileDialog.prototype, "open", "open_finish");
+Gio._promisify(Adw.AlertDialog.prototype, "choose", "choose_finish");
+
+const THEMES = ["default", "light", "system"];
 
 /** Runs update now and whenever the key changes, until the window closes */
 function watch(window, settings, key, update) {
@@ -38,6 +47,51 @@ function spinRow(settings, key, props) {
     return row;
 }
 
+/** A short message at the bottom of the window */
+function toast(window, title) {
+    window.add_toast(new Adw.Toast({ title, timeout: 4 }));
+}
+
+/** The daemon's own message, without the "GDBus.Error:org.freedesktop.DBus.Error.Failed: " prefix */
+function errorText(error) {
+    if (error instanceof GLib.Error) {
+        Gio.DBusError.strip_remote_error(error);
+    }
+    return error.message;
+}
+
+/** Closing a file dialog without choosing is not an error */
+function dismissed(error) {
+    return error instanceof GLib.Error
+        && (error.matches(Gtk.DialogError, Gtk.DialogError.DISMISSED)
+            || error.matches(Gtk.DialogError, Gtk.DialogError.CANCELLED));
+}
+
+/** The daemon reads and writes files by path: a remote location has none */
+function localPath(file) {
+    const path = file.get_path();
+    if (!path) {
+        throw new Error(_("Choose a file on this computer"));
+    }
+    return path;
+}
+
+/** Asks before something that cannot be undone; true only when the user confirmed */
+async function confirm(window, heading, body, action) {
+    const dialog = new Adw.AlertDialog({ heading, body });
+    dialog.add_response("cancel", _("Cancel"));
+    dialog.add_response("confirm", action);
+    dialog.set_response_appearance("confirm", Adw.ResponseAppearance.DESTRUCTIVE);
+    // Enter and Esc both cancel: confirming takes a deliberate click
+    dialog.set_default_response("cancel");
+    dialog.set_close_response("cancel");
+    return (await dialog.choose(window, null)) === "confirm";
+}
+
+function projects(count) {
+    return `${count} ${count === 1 ? _("project") : _("projects")}`;
+}
+
 export default class OrganizedTodoPreferences extends ExtensionPreferences {
     fillPreferencesWindow(window) {
         const settings = this.getSettings();
@@ -45,6 +99,7 @@ export default class OrganizedTodoPreferences extends ExtensionPreferences {
         window.add(this._appearancePage(window, settings));
         window.add(this._behaviorPage(window, settings));
         window.add(this._shortcutsPage(window, settings));
+        window.add(this._dataPage(window));
     }
 
     _appearancePage(window, settings) {
@@ -52,20 +107,24 @@ export default class OrganizedTodoPreferences extends ExtensionPreferences {
         const group = new Adw.PreferencesGroup({ title: _("Theme") });
         const theme = new Adw.ComboRow({
             title: _("Theme"),
-            subtitle: _("Colors of the menu, the quick add and this window"),
-            model: Gtk.StringList.new([_("OrganizedTodo"), _("System")]),
+            subtitle: _("Menu, quick add and this window. System follows GNOME's light or dark style"),
+            model: Gtk.StringList.new([_("Default"), _("Light"), _("System")]),
         });
         group.add(theme);
         page.add(group);
         bindCombo(window, settings, "theme", theme, THEMES);
-        watch(window, settings, "theme", () => {
-            if (settings.get_string("theme") === "organizedtodo") {
-                window.add_css_class("organizedtodo-prefs");
+        // The same rule and the same GNOME key as the menu, so the window and the menu always agree
+        const desktop = new Gio.Settings({ schema_id: "org.gnome.desktop.interface" });
+        const applyTheme = () => {
+            if (isLight(settings.get_string("theme"), desktop.get_string("color-scheme"))) {
+                window.add_css_class(LIGHT_THEME_CLASS);
             }
             else {
-                window.remove_css_class("organizedtodo-prefs");
+                window.remove_css_class(LIGHT_THEME_CLASS);
             }
-        });
+        };
+        watch(window, settings, "theme", applyTheme);
+        watch(window, desktop, "color-scheme", applyTheme);
 
         const bar = new Adw.PreferencesGroup({ title: _("Top bar") });
         const position = new Adw.ComboRow({
@@ -226,11 +285,131 @@ export default class OrganizedTodoPreferences extends ExtensionPreferences {
         dialog.present(window);
     }
 
+    _dataPage(window) {
+        const page = new Adw.PreferencesPage({ title: _("Data"), icon_name: "drive-harddisk-symbolic" });
+        const backup = new Adw.PreferencesGroup({
+            title: _("Backup"),
+            description: _("Every project, list, task and note, in one JSON file"),
+        });
+        const exportRow = new Adw.ActionRow({
+            title: _("Export"),
+            subtitle: _("Save everything to a file"),
+            activatable: true,
+        });
+        exportRow.add_suffix(new Gtk.Image({ icon_name: "document-save-symbolic" }));
+        exportRow.connect("activated", () => this._export(window));
+        backup.add(exportRow);
+        const importRow = new Adw.ActionRow({
+            title: _("Import"),
+            subtitle: _("Replace everything with a backup"),
+            activatable: true,
+        });
+        importRow.add_suffix(new Gtk.Image({ icon_name: "document-open-symbolic" }));
+        importRow.connect("activated", () => this._import(window));
+        backup.add(importRow);
+        page.add(backup);
+
+        const archive = new Adw.PreferencesGroup({ title: _("Archive") });
+        const purgeRow = new Adw.ActionRow({
+            title: _("Delete archived projects"),
+            subtitle: _("Every project in Completed, with its lists and tasks"),
+            activatable: true,
+        });
+        purgeRow.add_suffix(new Gtk.Image({ icon_name: "user-trash-symbolic" }));
+        purgeRow.connect("activated", () => this._removeArchived(window));
+        archive.add(purgeRow);
+        page.add(archive);
+        return page;
+    }
+
+    async _export(window) {
+        const today = GLib.DateTime.new_now_local().format("%Y-%m-%d");
+        const dialog = new Gtk.FileDialog({
+            title: _("Export projects"),
+            initial_name: `organizedtodo-${today}.json`,
+        });
+        let file;
+        try {
+            file = await dialog.save(window, null);
+        }
+        catch (e) {
+            if (!dismissed(e)) {
+                toast(window, errorText(e));
+            }
+            return;
+        }
+        try {
+            const proxy = await daemonProxy();
+            await proxy.ExportWorkspaceAsync(localPath(file));
+            toast(window, `${_("Exported to")} ${file.get_basename()}`);
+        }
+        catch (e) {
+            toast(window, errorText(e));
+        }
+    }
+
+    async _import(window) {
+        const filter = new Gtk.FileFilter({ name: _("Backups (JSON)") });
+        filter.add_pattern("*.json");
+        const filters = new Gio.ListStore({ item_type: Gtk.FileFilter });
+        filters.append(filter);
+        const dialog = new Gtk.FileDialog({ title: _("Import projects"), filters });
+        let file;
+        try {
+            file = await dialog.open(window, null);
+        }
+        catch (e) {
+            if (!dismissed(e)) {
+                toast(window, errorText(e));
+            }
+            return;
+        }
+        const replace = await confirm(
+            window,
+            _("Replace all your projects?"),
+            `${_("Every project, list and task will be replaced by the ones in")} “${file.get_basename()}”. `
+                + _("Export first if you may want them back."),
+            _("Replace"),
+        );
+        if (!replace) {
+            return;
+        }
+        try {
+            const proxy = await daemonProxy();
+            const [count] = await proxy.ImportWorkspaceAsync(localPath(file));
+            toast(window, `${_("Imported")} ${projects(count)}`);
+        }
+        catch (e) {
+            toast(window, errorText(e));
+        }
+    }
+
+    async _removeArchived(window) {
+        const remove = await confirm(
+            window,
+            _("Delete every archived project?"),
+            _("The projects in Completed are deleted with their lists, tasks and notes. This cannot be undone."),
+            _("Delete"),
+        );
+        if (!remove) {
+            return;
+        }
+        try {
+            const proxy = await daemonProxy();
+            const [count] = await proxy.RemoveCompletedFoldersAsync();
+            toast(window, count ? `${_("Deleted")} ${projects(count)}` : _("There were no archived projects"));
+        }
+        catch (e) {
+            toast(window, errorText(e));
+        }
+    }
+
     /** prefs.css for this window; removed on close so reopening does not stack copies */
     _loadStyle(window) {
         const provider = new Gtk.CssProvider();
         provider.load_from_path(`${this.path}/prefs.css`);
         const display = window.get_display();
+        window.add_css_class("organizedtodo-prefs");
         Gtk.StyleContext.add_provider_for_display(display, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
         window.connect("close-request", () => Gtk.StyleContext.remove_provider_for_display(display, provider));
     }

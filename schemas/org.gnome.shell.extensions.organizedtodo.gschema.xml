@@ -23,12 +23,13 @@
     </key>
     <key name="theme" type="s">
       <choices>
-        <choice value="organizedtodo"/>
+        <choice value="default"/>
+        <choice value="light"/>
         <choice value="system"/>
       </choices>
-      <default>'organizedtodo'</default>
-      <summary>Theme of the extension's windows</summary>
-      <description>organizedtodo: dark, with the purple of the panel icon. system: follows GNOME's light/dark style and accent color.</description>
+      <default>'default'</default>
+      <summary>Theme of the menu, the quick add and the settings window</summary>
+      <description>default: dark, with the colors of the panel icon. light: white. system: default when GNOME prefers dark, light otherwise.</description>
     </key>
     <key name="panel-position" type="s">
       <choices>

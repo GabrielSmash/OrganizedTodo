@@ -128,6 +128,15 @@ t("code blocks: known languages are colored, by name or alias", () => {
     assert.deepEqual(notes("```rs\nprintln!(\"{}\", None);\n```"), [BLOCK(`${FUNCTION("println!")}(${STRING("&quot;{}&quot;")}, ${NUMBER("None")});`)]);
 });
 
+t("light theme: inline code and code colors are darker, readable on white; dark is the default", () => {
+    assert.equal(md("`x`", { light: true }), `<span font_family="monospace" background="#000000" bgalpha="8%">x</span>`);
+    assert.equal(md("`x`"), CODE("x"));
+    const [block] = noteBlocks("```py\ndef f(): pass\n```", { light: true });
+    assert.match(block.markup, /foreground="#8a3f99">def</);
+    assert.match(noteBlocks("```py\ndef f(): pass\n```")[0].markup, /foreground="#dc8add">def</);
+    assert.match(noteBlocks("`y`", { light: true })[0].markup, /bgalpha="8%"/);
+});
+
 t("code blocks: markers inside strings and comments are not colored again", () => {
     assert.deepEqual(notes("```py\ns = \"# def\"  # if \"x\"\n```"), [BLOCK(`s = ${STRING("&quot;# def&quot;")}  ${COMMENT("# if &quot;x&quot;")}`)]);
     assert.deepEqual(notes("```py\n\"\"\"doc\ndef x\"\"\"\n```"), [BLOCK(STRING("&quot;&quot;&quot;doc\ndef x&quot;&quot;&quot;"))]);
