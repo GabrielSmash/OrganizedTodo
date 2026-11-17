@@ -1,0 +1,348 @@
+use zbus::fdo;
+use zbus::interface;
+use zbus::object_server::SignalEmitter;
+
+use crate::actor::StoreHandle;
+use crate::agent::Request;
+use crate::model::Workspace;
+use crate::preferences::Preferences;
+
+pub const BUS_NAME: &str = "io.github.gabrielsmash.OrganizedTodo";
+pub const OBJECT_PATH: &str = "/io/github/gabrielsmash/OrganizedTodo";
+
+pub struct TodoService {
+    store: StoreHandle,
+}
+
+impl TodoService {
+    pub fn new(store: StoreHandle) -> Self {
+        Self { store }
+    }
+
+    /// Every mutation goes through here: apply, save, then tell clients to refresh.
+    async fn update<R: Send + 'static>(
+        &self,
+        emitter: &SignalEmitter<'_>,
+        change: impl FnOnce(&mut Workspace) -> R + Send + 'static,
+    ) -> fdo::Result<R> {
+        self.update_with_preferences(emitter, move |workspace, _| change(workspace))
+            .await
+    }
+
+    /// Like update, for the rules that depend on what the user chose in the preferences.
+    async fn update_with_preferences<R: Send + 'static>(
+        &self,
+        emitter: &SignalEmitter<'_>,
+        change: impl FnOnce(&mut Workspace, Preferences) -> R + Send + 'static,
+    ) -> fdo::Result<R> {
+        let result = self
+            .store
+            .update_with_preferences(change)
+            .await
+            .map_err(fdo::Error::Failed)?;
+        Self::notify_changed(emitter).await;
+        Ok(result)
+    }
+
+    /// Tells clients to refresh; a failure is only logged, the change itself is done.
+    async fn notify_changed(emitter: &SignalEmitter<'_>) {
+        if let Err(error) = Self::changed(emitter).await {
+            eprintln!("organizedtodo: failed to emit Changed: {error}");
+        }
+    }
+}
+
+#[interface(name = "io.github.gabrielsmash.OrganizedTodo1")]
+impl TodoService {
+    /// The whole workspace as JSON, in the same format stored in GSettings.
+    async fn get_workspace(&self) -> fdo::Result<String> {
+        let json = self
+            .store
+            .read(|workspace| serde_json::to_string(workspace))
+            .await
+            .map_err(fdo::Error::Failed)?;
+        json.map_err(|error| fdo::Error::Failed(error.to_string()))
+    }
+
+    /// Writes every project to a JSON file the user chose.
+    async fn export_workspace(&self, path: String) -> fdo::Result<()> {
+        self.store
+            .export_to(path.into())
+            .await
+            .map_err(fdo::Error::Failed)
+    }
+
+    /// Replaces every project with those of a backup file; returns how many there are.
+    async fn import_workspace(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        path: String,
+    ) -> fdo::Result<u32> {
+        let count = self
+            .store
+            .import_from(path.into())
+            .await
+            .map_err(fdo::Error::Failed)?;
+        Self::notify_changed(&emitter).await;
+        Ok(count as u32)
+    }
+
+    /// For AI agents, through `organizedtodo-daemon mcp`: a request as JSON
+    /// ({"tool": ..., "args": {...}}), the reply as JSON. Error texts are written for the agent.
+    async fn agent_call(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        request: String,
+    ) -> fdo::Result<String> {
+        let request = Request::parse(&request).map_err(fdo::Error::InvalidArgs)?;
+        let (reply, saved) = self
+            .store
+            .agent_call(request)
+            .await
+            .map_err(fdo::Error::Failed)?;
+        if saved {
+            Self::notify_changed(&emitter).await;
+        }
+        Ok(reply.to_string())
+    }
+
+    // D-Bus has no optional values: an empty id means nothing was created.
+    async fn add_folder(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        name: String,
+    ) -> fdo::Result<String> {
+        self.update(&emitter, move |workspace| workspace.add_folder(&name))
+            .await
+            .map(Option::unwrap_or_default)
+    }
+
+    async fn rename_folder(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        name: String,
+    ) -> fdo::Result<bool> {
+        self.update(&emitter, move |workspace| {
+            workspace.rename_folder(&folder_id, &name)
+        })
+        .await
+    }
+
+    async fn remove_folder(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+    ) -> fdo::Result<bool> {
+        self.update(&emitter, move |workspace| {
+            workspace.remove_folder(&folder_id)
+        })
+        .await
+    }
+
+    async fn set_folder_completed(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        completed: bool,
+    ) -> fdo::Result<bool> {
+        self.update(&emitter, move |workspace| {
+            workspace.set_folder_completed(&folder_id, completed)
+        })
+        .await
+    }
+
+    /// Deletes every completed project; returns how many there were.
+    async fn remove_completed_folders(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+    ) -> fdo::Result<u32> {
+        self.update(&emitter, |workspace| {
+            workspace.remove_completed_folders() as u32
+        })
+        .await
+    }
+
+    async fn add_list(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        name: String,
+    ) -> fdo::Result<String> {
+        self.update(&emitter, move |workspace| {
+            workspace.add_list(&folder_id, &name)
+        })
+        .await
+        .map(Option::unwrap_or_default)
+    }
+
+    async fn rename_list(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        list_id: String,
+        name: String,
+    ) -> fdo::Result<bool> {
+        self.update(&emitter, move |workspace| {
+            workspace.rename_list(&folder_id, &list_id, &name)
+        })
+        .await
+    }
+
+    async fn remove_list(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        list_id: String,
+    ) -> fdo::Result<bool> {
+        self.update(&emitter, move |workspace| {
+            workspace.remove_list(&folder_id, &list_id)
+        })
+        .await
+    }
+
+    async fn add_todo(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        list_id: String,
+        name: String,
+    ) -> fdo::Result<bool> {
+        self.update_with_preferences(&emitter, move |workspace, preferences| {
+            workspace.add_todo(&folder_id, &list_id, &name, preferences.new_todo_at)
+        })
+        .await
+    }
+
+    /// Where quick add should put a todo, as (folder id, list id);
+    /// empty ids when there is no list yet.
+    async fn quick_add_destination(&self) -> fdo::Result<(String, String)> {
+        let destination = self
+            .store
+            .quick_add_destination()
+            .await
+            .map_err(fdo::Error::Failed)?;
+        Ok(destination.unwrap_or_default())
+    }
+
+    /// Like AddTodo, and remembers the list for the next quick add.
+    async fn quick_add_todo(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        list_id: String,
+        name: String,
+    ) -> fdo::Result<bool> {
+        let (folder, list) = (folder_id.clone(), list_id.clone());
+        let added = self
+            .update_with_preferences(&emitter, move |workspace, preferences| {
+                workspace.add_todo(&folder, &list, &name, preferences.new_todo_at)
+            })
+            .await?;
+        if added {
+            self.store
+                .remember_destination(folder_id, list_id)
+                .await
+                .map_err(fdo::Error::Failed)?;
+        }
+        Ok(added)
+    }
+
+    async fn remove_todo(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        list_id: String,
+        index: u32,
+    ) -> fdo::Result<bool> {
+        self.update(&emitter, move |workspace| {
+            workspace.remove_todo(&folder_id, &list_id, index as usize)
+        })
+        .await
+    }
+
+    async fn rename_todo(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        list_id: String,
+        index: u32,
+        name: String,
+    ) -> fdo::Result<bool> {
+        self.update(&emitter, move |workspace| {
+            workspace.rename_todo(&folder_id, &list_id, index as usize, &name)
+        })
+        .await
+    }
+
+    async fn set_todo_notes(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        list_id: String,
+        index: u32,
+        notes: String,
+    ) -> fdo::Result<bool> {
+        self.update(&emitter, move |workspace| {
+            workspace.set_todo_notes(&folder_id, &list_id, index as usize, &notes)
+        })
+        .await
+    }
+
+    /// Returns (all_done, index): whether this toggle left every todo of the project done,
+    /// and where the todo is now (done todos may move to the bottom).
+    async fn toggle_todo(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        list_id: String,
+        index: u32,
+    ) -> fdo::Result<(bool, u32)> {
+        self.update_with_preferences(&emitter, move |workspace, preferences| {
+            workspace
+                .toggle_todo(
+                    &folder_id,
+                    &list_id,
+                    index as usize,
+                    preferences.done_todo,
+                    preferences.project_completion,
+                )
+                // An unknown todo changes nothing: not all done, still where it was asked
+                .map_or((false, index), |toggled| {
+                    (toggled.all_done, toggled.index as u32)
+                })
+        })
+        .await
+    }
+
+    async fn set_todo_focus(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        list_id: String,
+        index: u32,
+        focused: bool,
+    ) -> fdo::Result<bool> {
+        self.update(&emitter, move |workspace| {
+            workspace.set_todo_focus(&folder_id, &list_id, index as usize, focused)
+        })
+        .await
+    }
+
+    async fn reorder_todo(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        folder_id: String,
+        list_id: String,
+        from: u32,
+        to: u32,
+    ) -> fdo::Result<bool> {
+        self.update(&emitter, move |workspace| {
+            workspace.reorder_todo(&folder_id, &list_id, from as usize, to as usize)
+        })
+        .await
+    }
+
+    #[zbus(signal)]
+    async fn changed(emitter: &SignalEmitter<'_>) -> zbus::Result<()>;
+}

@@ -11,5 +11,115 @@
       <summary>Shortcut to open the extension</summary>
       <description>Press Alt+Shift+Space to open the extension.</description>
     </key>
+    <key name="quick-add" type="as">
+      <default><![CDATA[['<Super><Alt>t']]]></default>
+      <summary>Shortcut to quickly add a task</summary>
+      <description>Press Super+Alt+T to add a task from anywhere, without opening the menu.</description>
+    </key>
+    <key name="quick-add-destination" type="(ss)">
+      <default>('', '')</default>
+      <summary>Last project and list used by quick add</summary>
+      <description>Project id and list id where the last quick-added task went. Empty until the first use.</description>
+    </key>
+    <key name="theme" type="s">
+      <choices>
+        <choice value="default"/>
+        <choice value="light"/>
+        <choice value="system"/>
+      </choices>
+      <default>'default'</default>
+      <summary>Theme of the menu, the quick add and the settings window</summary>
+      <description>default: dark, with the colors of the panel icon. light: white. system: default when GNOME prefers dark, light otherwise.</description>
+    </key>
+    <key name="panel-position" type="s">
+      <choices>
+        <choice value="left"/>
+        <choice value="center"/>
+        <choice value="right"/>
+      </choices>
+      <default>'right'</default>
+      <summary>Where the icon sits in the top bar</summary>
+    </key>
+    <key name="show-pending-count" type="b">
+      <default>false</default>
+      <summary>Show the number of pending tasks next to the icon</summary>
+    </key>
+    <key name="menu-width" type="i">
+      <range min="360" max="720"/>
+      <default>440</default>
+      <summary>Menu width, in pixels</summary>
+    </key>
+    <key name="menu-height" type="i">
+      <range min="240" max="800"/>
+      <default>380</default>
+      <summary>Maximum height of the task area, in pixels</summary>
+    </key>
+    <key name="completion-effect" type="b">
+      <default>true</default>
+      <summary>Pulse and burst of dots when a task is marked done</summary>
+    </key>
+    <key name="open-on" type="s">
+      <choices>
+        <choice value="last"/>
+        <choice value="projects"/>
+      </choices>
+      <default>'last'</default>
+      <summary>Screen shown when the menu opens</summary>
+      <description>last: where it was left. projects: always the Projects screen, except while a notes draft is being edited.</description>
+    </key>
+    <key name="confirm-delete" type="b">
+      <default>true</default>
+      <summary>Ask for a second click before deleting a project or list that is not empty</summary>
+    </key>
+    <key name="quick-add-keep-open" type="b">
+      <default>false</default>
+      <summary>Keep the quick add open after adding a task</summary>
+    </key>
+    <key name="new-todo-position" type="s">
+      <choices>
+        <choice value="bottom"/>
+        <choice value="top"/>
+      </choices>
+      <default>'bottom'</default>
+      <summary>Where a new task goes in its list</summary>
+      <description>top: first, but below the focused task, which always stays first.</description>
+    </key>
+    <key name="done-todo-position" type="s">
+      <choices>
+        <choice value="stay"/>
+        <choice value="bottom"/>
+      </choices>
+      <default>'stay'</default>
+      <summary>What happens to a task marked done</summary>
+      <description>bottom: it moves to the end of its list and loses the focus. Unchecking leaves it there.</description>
+    </key>
+    <key name="project-completion" type="s">
+      <choices>
+        <choice value="button"/>
+        <choice value="automatic"/>
+      </choices>
+      <default>'button'</default>
+      <summary>What happens when every task of a project is done</summary>
+      <description>button: the project shows a Complete button. automatic: the project is archived in Completed at once.</description>
+    </key>
+    <key name="quick-add-target" type="s">
+      <choices>
+        <choice value="remember"/>
+        <choice value="ask"/>
+      </choices>
+      <default>'remember'</default>
+      <summary>Where quick add puts a task</summary>
+      <description>remember: the list used last. ask: the dialog opens on the project and list picker every time.</description>
+    </key>
+    <key name="agent-access" type="s">
+      <choices>
+        <choice value="off"/>
+        <choice value="read"/>
+        <choice value="write"/>
+      </choices>
+      <default>'off'</default>
+      <summary>What AI agents can do through MCP</summary>
+      <description>off: nothing. read: list and read projects, lists and tasks. write: also add, rename, complete and annotate them. Deleting is never offered to agents.</description>
+    </key>
   </schema>
 </schemalist>

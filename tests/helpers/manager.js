@@ -1,6 +1,10 @@
-// Data layer. Workspace shape (stored as one JSON string in GSettings):
+// In-memory engine behind tests/helpers/fake-client.mjs. Mirrors the rules of
+// daemon/src/model.rs, which is what the extension really uses.
+// Workspace shape (stored as one JSON string in GSettings):
 // { folders: [ { id, name, completed, lists: [ { id, name, todos: [ { name, isDone, isFocused? } ] } ] } ] }
 const WORKSPACE = "workspace";
+// The real daemon keeps this as a (ss) tuple; here a JSON pair in the same fake settings
+const DESTINATION = "quick-add-destination";
 
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
@@ -183,6 +187,31 @@ export class TodoListManager {
         return true;
     }
 
+    /** Mirrors Workspace::quick_add_destination with the remembered pair; null when there is no list. */
+    quickAddDestination() {
+        // Like the daemon's QuickAddTarget::Ask: no destination, the dialog opens on the picker
+        if (this.GSettings.get_string("quick-add-target") === "ask") {
+            return null;
+        }
+        const [folderId, listId] = JSON.parse(this.GSettings.get_string(DESTINATION) || '["", ""]');
+        const data = this._read();
+        const folder = this._folder(data, folderId);
+        if (folder && !folder.completed && this._list(data, folderId, listId)) {
+            return { folderId, listId };
+        }
+        const first = data.folders.find((candidate) => !candidate.completed && candidate.lists.length > 0);
+        return first ? { folderId: first.id, listId: first.lists[0].id } : null;
+    }
+
+    /** Like addTodo, and remembers the list for the next quick add. */
+    quickAddTodo(folderId, listId, name) {
+        const added = this.addTodo(folderId, listId, name);
+        if (added) {
+            this.GSettings.set_string(DESTINATION, JSON.stringify([folderId, listId]));
+        }
+        return added;
+    }
+
     removeTodo(folderId, listId, index) {
         const data = this._read();
         const list = this._list(data, folderId, listId);
@@ -206,31 +235,59 @@ export class TodoListManager {
         return true;
     }
 
-    /**
-     * Flip a todo's done state.
-     * Returns true when this made every todo of the project done, in which
-     * case the project is marked completed. Unchecking a todo reactivates a
-     * completed project.
-     */
-    toggleTodo(folderId, listId, index) {
+    /** Like the daemon: trailing blank lines dropped; empty notes leave no "notes" key. */
+    setTodoNotes(folderId, listId, index, notes) {
         const data = this._read();
-        const folder = this._folder(data, folderId);
         const todo = this._list(data, folderId, listId)?.todos[index];
         if (!todo) {
             return false;
         }
-        todo.isDone = !todo.isDone;
-        let justCompleted = false;
-        if (!todo.isDone) {
-            folder.completed = false;
+        notes = notes.trimEnd();
+        if (notes) {
+            todo.notes = notes;
         }
-        else if (!folder.completed && undoneCount(folder) === 0) {
-            // todoCount > 0 is implied: the todo we just checked exists
-            folder.completed = true;
-            justCompleted = true;
+        else {
+            delete todo.notes;
         }
         this._write(data);
-        return justCompleted;
+        return true;
+    }
+
+    /**
+     * Flip a todo's done state. Returns { allDone, index }: whether this made every todo
+     * of the project done (completing it is then up to the user), and where the todo is now.
+     * Unchecking a todo reactivates a completed project.
+     */
+    toggleTodo(folderId, listId, index) {
+        const data = this._read();
+        const folder = this._folder(data, folderId);
+        const list = this._list(data, folderId, listId);
+        const todo = list?.todos[index];
+        if (!todo) {
+            return { allDone: false, index };
+        }
+        todo.isDone = !todo.isDone;
+        if (!todo.isDone) {
+            folder.completed = false;
+            this._write(data);
+            return { allDone: false, index };
+        }
+        // Like the daemon's DoneTodo::ToBottom: to the end, without the focus
+        let at = index;
+        if (this.GSettings.get_string("done-todo-position") === "bottom") {
+            list.todos.splice(index, 1);
+            delete todo.isFocused;
+            list.todos.push(todo);
+            at = list.todos.length - 1;
+        }
+        // todoCount > 0 is implied: the todo we just checked exists
+        const allDone = !folder.completed && undoneCount(folder) === 0;
+        // Like the daemon's ProjectCompletion::Automatic
+        if (allDone && this.GSettings.get_string("project-completion") === "automatic") {
+            folder.completed = true;
+        }
+        this._write(data);
+        return { allDone, index: at };
     }
 
     /** Focused todo is kept at the top of its list; only one per list. */

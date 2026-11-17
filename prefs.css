@@ -1,0 +1,39 @@
+/* Only inside our window: every extension's preferences share one process and one display.
+   organizedtodo-prefs is always on the window (dark, like the menu); organizedtodo-light (see utils.js)
+   is added on top for the light theme. Accents follow the panel icon (#4e5fc0 → #9a58a8 → #f0568c) */
+window.organizedtodo-prefs {
+    --window-bg-color: #1e1e24;
+    --window-fg-color: #ffffff;
+    --view-bg-color: #1e1e24;
+    --view-fg-color: #ffffff;
+    --headerbar-bg-color: #26262e;
+    --headerbar-fg-color: #ffffff;
+    --headerbar-backdrop-color: #1e1e24;
+    --card-bg-color: rgba(255, 255, 255, 0.06);
+    --card-fg-color: #ffffff;
+    --popover-bg-color: #2c2c36;
+    --popover-fg-color: #ffffff;
+    --dialog-bg-color: #26262e;
+    --dialog-fg-color: #ffffff;
+    --accent-bg-color: #9a58a8;
+    --accent-fg-color: #ffffff;
+    --accent-color: #d29ade;
+}
+
+/* Light: the same surfaces as the light menu (GNOME Shell's light theme) */
+window.organizedtodo-prefs.organizedtodo-light {
+    --window-bg-color: #fafafb;
+    --window-fg-color: #222226;
+    --view-bg-color: #ffffff;
+    --view-fg-color: #222226;
+    --headerbar-bg-color: #ffffff;
+    --headerbar-fg-color: #222226;
+    --headerbar-backdrop-color: #fafafb;
+    --card-bg-color: #ffffff;
+    --card-fg-color: #222226;
+    --popover-bg-color: #ffffff;
+    --popover-fg-color: #222226;
+    --dialog-bg-color: #fafafb;
+    --dialog-fg-color: #222226;
+    --accent-color: #8a3f99;
+}
