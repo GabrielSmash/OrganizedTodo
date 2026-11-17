@@ -232,8 +232,11 @@ Nothing runs until an agent connects.
 2. Connect your agent. For Claude Code:
 
    ```sh
-   claude mcp add organizedtodo -- ~/.local/bin/organizedtodo-daemon mcp
+   claude mcp add --scope user organizedtodo -- ~/.local/bin/organizedtodo-daemon mcp
    ```
+
+   `--scope user` makes it available whatever folder Claude Code is opened in; without it, only in the
+   folder where you ran the command. `claude mcp list` shows it, `claude mcp remove --scope user organizedtodo` undoes it.
 
    Other agents take a JSON entry, which the same tab copies for you:
 

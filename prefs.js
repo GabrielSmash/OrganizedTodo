@@ -341,7 +341,8 @@ export default class OrganizedTodoPreferences extends ExtensionPreferences {
             description: _("The agent starts OrganizedTodo's MCP server itself with this command; "
                 + "nothing runs until it does."),
         });
-        const claudeCode = `claude mcp add organizedtodo -- ${GLib.shell_quote(path)} mcp`;
+        // --scope user: available in every folder, not only where the command was run (the default)
+        const claudeCode = `claude mcp add --scope user organizedtodo -- ${GLib.shell_quote(path)} mcp`;
         connect.add(copyRow(window, _("Claude Code"), claudeCode));
         const config = JSON.stringify({ mcpServers: { organizedtodo: { command: path, args: ["mcp"] } } }, null, 2);
         connect.add(copyRow(window, _("Other agents (JSON configuration)"), `${path} mcp`, config));
