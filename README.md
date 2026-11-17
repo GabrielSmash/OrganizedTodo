@@ -13,6 +13,7 @@ Derived from [Todoit](https://github.com/wassimbj/todoit-gnome), by wassimbj (MI
 - **Focus and order:** highlight a task (it is pinned to the top of its list) and drag to reorder.
 - **A single panel icon**, opened by clicking or with the `Alt+Shift+Space` shortcut.
 - **Settings window:** the gear on the Projects screen opens appearance, behavior, shortcuts and backup options.
+- **AI agents (MCP):** Claude Code and other MCP clients can read your projects and, if you allow it, add, complete, rename and annotate tasks. They never delete anything.
 - **Quick add from anywhere:** `Super+Alt+T` opens a box in the middle of the current screen to add a task without opening the menu. It remembers the last list you used, and can pick or create another one.
 - **Notes per task:** free text for each task, with full markdown (headings, lists, checkboxes, colored code blocks).
 - **Formatting in names:** simple markdown in projects, lists and tasks; links open with one click.
@@ -211,6 +212,7 @@ Changes apply right away.
 | Appearance | Theme (Default is dark, Light is white, System follows GNOME's light or dark style; applies to the menu, the quick add and this window), icon position in the top bar, pending count next to the icon, menu width, maximum list height, the burst on done tasks |
 | Behavior | Which screen the menu opens on, confirm before deleting, where new and done tasks go, Complete button or automatic archive, quick add destination and staying open |
 | Shortcuts | Click a shortcut and press the new one; Backspace disables it, the arrow button restores the default |
+| AI agents | What agents can do (nothing, read, or read and change), and the command to connect one |
 | Data | Export and import a backup; delete every archived project |
 
 The shortcuts can also be changed from a terminal:
@@ -219,6 +221,38 @@ The shortcuts can also be changed from a terminal:
 dconf write /org/gnome/shell/extensions/organizedtodo/open-organizedtodo "['<Super>t']"
 dconf write /org/gnome/shell/extensions/organizedtodo/quick-add "['<Super><Alt>n']"
 ```
+
+### AI agents (MCP)
+
+[MCP](https://modelcontextprotocol.io) lets AI agents such as Claude Code use apps through tools.
+OrganizedTodo's daemon has an MCP mode, `organizedtodo-daemon mcp`, that the agent starts by itself.
+Nothing runs until an agent connects.
+
+1. In **Settings → AI agents**, choose what agents can do. It starts as **Nothing**.
+2. Connect your agent. For Claude Code:
+
+   ```sh
+   claude mcp add organizedtodo -- ~/.local/bin/organizedtodo-daemon mcp
+   ```
+
+   Other agents take a JSON entry, which the same tab copies for you:
+
+   ```json
+   {"mcpServers": {"organizedtodo": {"command": "/home/you/.local/bin/organizedtodo-daemon", "args": ["mcp"]}}}
+   ```
+
+3. Ask in plain words: *"what is left in the Home project?"*, *"add 'buy coffee' to Home › Shopping"*, *"mark the coffee task done"*.
+
+| Access | Tools |
+|---|---|
+| Read | `list_projects`, `get_list`, `search_tasks` |
+| Read and change | also `add_project`, `add_list`, `add_task`, `complete_task`, `reopen_task`, `rename_task`, `set_task_notes`, `focus_task` |
+
+- Agents refer to things **by name** (case does not matter, a unique part is enough) or by id. When a name fits more than one, nothing changes and the agent is told the candidates.
+- They follow your settings, as the menu does: where new and done tasks go, and archiving a project when it is all done.
+- They cannot delete projects, lists or tasks, import a backup or clear the archive.
+- Changes show up in the menu right away.
+- The access setting is a rule for agents, not a security boundary: any program in your session can already talk to the daemon over D-Bus.
 
 ## Where the data lives
 
@@ -257,7 +291,12 @@ How the pieces connect:
 extension.js (UI, runs inside gnome-shell)
    └─ client.js ── session D-Bus ──► organizedtodo-daemon (Rust)
                    io.github.gabrielsmash.OrganizedTodo     └─ dconf (GSettings)
+                                       ▲
+AI agent ── stdio (MCP) ──► organizedtodo-daemon mcp ── AgentCall
 ```
+
+The MCP mode owns no data: each tool call becomes one `AgentCall`, which the daemon checks against the
+access setting and runs as one step on its store thread, so a task found by name is the one changed.
 
 The extension never blocks the shell: every call to the daemon is asynchronous, and the UI redraws when the
 daemon emits the `Changed` signal.
@@ -279,7 +318,7 @@ Layout:
 
 | File | Role |
 |---|---|
-| `daemon/` | Rust backend: rules (projects, lists, tasks, completion, quick add destination), persistence, backup files and the D-Bus service. |
+| `daemon/` | Rust backend: rules (projects, lists, tasks, completion, quick add destination), persistence, backup files, the D-Bus service and the MCP mode for AI agents (`agent.rs`, `lookup.rs`, `mcp.rs`). |
 | `client.js` | D-Bus client of the daemon; keeps the copy of the data for the UI. |
 | `extension.js` | The screens and the navigation. |
 | `quickAdd.js` | The quick add box (`Super+Alt+T`). |
@@ -298,6 +337,7 @@ Layout:
 - The zip (`make pack`) does not include the daemon; it has to be built from source.
 - No sync, no reminders and no dates on tasks.
 - Code block colors are simple keyword highlighting, not a full parser of the language.
+- MCP runs over stdio only (the agent starts it); there is no HTTP mode. The MCP bridge (`daemon/src/mcp.rs`) has no automated test: it was checked by hand, also with Claude Code, against a nested session.
 
 ## License and credits
 

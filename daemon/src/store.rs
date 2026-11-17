@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 use gio::prelude::*;
 
 use crate::model::Workspace;
-use crate::preferences::{DoneTodo, NewTodoAt, Preferences, ProjectCompletion, QuickAddTarget};
+use crate::preferences::{
+    AgentAccess, DoneTodo, NewTodoAt, Preferences, ProjectCompletion, QuickAddTarget,
+};
 
 const SCHEMA_ID: &str = "org.gnome.shell.extensions.organizedtodo";
 const EXTENSION_UUID: &str = "organizedtodo@gabrielsmash.github.io";
@@ -84,6 +86,11 @@ impl Store {
                 "ask" => QuickAddTarget::Ask,
                 _ => QuickAddTarget::Remember,
             },
+            agent_access: match key("agent-access").as_str() {
+                "read" => AgentAccess::Read,
+                "write" => AgentAccess::Write,
+                _ => AgentAccess::Off,
+            },
         }
     }
 
@@ -146,6 +153,7 @@ mod tests {
         store.set_string("done-todo-position", "bottom");
         store.set_string("project-completion", "automatic");
         store.set_string("quick-add-target", "ask");
+        store.set_string("agent-access", "write");
         assert_eq!(
             store.preferences(),
             Preferences {
@@ -153,6 +161,7 @@ mod tests {
                 done_todo: DoneTodo::ToBottom,
                 project_completion: ProjectCompletion::Automatic,
                 quick_add_target: QuickAddTarget::Ask,
+                agent_access: AgentAccess::Write,
             }
         );
     }

@@ -111,5 +111,15 @@
       <summary>Where quick add puts a task</summary>
       <description>remember: the list used last. ask: the dialog opens on the project and list picker every time.</description>
     </key>
+    <key name="agent-access" type="s">
+      <choices>
+        <choice value="off"/>
+        <choice value="read"/>
+        <choice value="write"/>
+      </choices>
+      <default>'off'</default>
+      <summary>What AI agents can do through MCP</summary>
+      <description>off: nothing. read: list and read projects, lists and tasks. write: also add, rename, complete and annotate them. Deleting is never offered to agents.</description>
+    </key>
   </schema>
 </schemalist>

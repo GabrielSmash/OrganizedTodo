@@ -44,4 +44,15 @@ pub struct Preferences {
     pub done_todo: DoneTodo,
     pub project_completion: ProjectCompletion,
     pub quick_add_target: QuickAddTarget,
+    pub agent_access: AgentAccess,
+}
+
+/// What AI agents may do through MCP; checked by the daemon on every agent call
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, PartialOrd, Ord)]
+pub enum AgentAccess {
+    #[default]
+    Off,
+    Read,
+    /// Read and change; never delete
+    Write,
 }

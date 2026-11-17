@@ -16,6 +16,7 @@ Gio._promisify(Gtk.FileDialog.prototype, "open", "open_finish");
 Gio._promisify(Adw.AlertDialog.prototype, "choose", "choose_finish");
 
 const THEMES = ["default", "light", "system"];
+const AGENT_ACCESS = ["off", "read", "write"];
 
 /** Runs update now and whenever the key changes, until the window closes */
 function watch(window, settings, key, update) {
@@ -88,6 +89,31 @@ async function confirm(window, heading, body, action) {
     return (await dialog.choose(window, null)) === "confirm";
 }
 
+/** Where make install puts the daemon. Agents start it themselves, maybe without our PATH */
+function daemonPath() {
+    return GLib.build_filenamev([GLib.get_home_dir(), ".local", "bin", "organizedtodo-daemon"]);
+}
+
+function copyText(window, text) {
+    window.get_clipboard().set_content(Gdk.ContentProvider.new_for_value(text));
+    toast(window, _("Copied"));
+}
+
+/** A row showing a command or snippet, with a button that copies it */
+function copyRow(window, title, shown, copied = shown) {
+    const row = new Adw.ActionRow({ title, subtitle: shown, subtitle_selectable: true });
+    row.add_css_class("monospace");
+    const button = new Gtk.Button({
+        icon_name: "edit-copy-symbolic",
+        tooltip_text: _("Copy"),
+        valign: Gtk.Align.CENTER,
+        css_classes: ["flat"],
+    });
+    button.connect("clicked", () => copyText(window, copied));
+    row.add_suffix(button);
+    return row;
+}
+
 function projects(count) {
     return `${count} ${count === 1 ? _("project") : _("projects")}`;
 }
@@ -99,6 +125,7 @@ export default class OrganizedTodoPreferences extends ExtensionPreferences {
         window.add(this._appearancePage(window, settings));
         window.add(this._behaviorPage(window, settings));
         window.add(this._shortcutsPage(window, settings));
+        window.add(this._agentsPage(window, settings));
         window.add(this._dataPage(window));
     }
 
@@ -283,6 +310,43 @@ export default class OrganizedTodoPreferences extends ExtensionPreferences {
         });
         dialog.add_controller(keys);
         dialog.present(window);
+    }
+
+    _agentsPage(window, settings) {
+        const page = new Adw.PreferencesPage({ title: _("AI agents"), icon_name: "system-run-symbolic" });
+        const access = new Adw.PreferencesGroup({
+            title: _("Access"),
+            description: _("AI agents such as Claude Code can use OrganizedTodo through MCP. "
+                + "They never delete anything, and they only do what you allow here."),
+        });
+        const level = new Adw.ComboRow({
+            title: _("AI agents can"),
+            model: Gtk.StringList.new([_("Nothing"), _("Read your projects"), _("Read and change them")]),
+        });
+        bindCombo(window, settings, "agent-access", level, AGENT_ACCESS);
+        // What the chosen level means, right under it: the combo labels alone leave doubts
+        watch(window, settings, "agent-access", () => {
+            level.subtitle = {
+                off: _("Agents are told the access is off"),
+                read: _("List projects and lists, read tasks and notes, search"),
+                write: _("Also add projects, lists and tasks, complete, reopen, rename, write notes and focus"),
+            }[settings.get_string("agent-access")];
+        });
+        access.add(level);
+        page.add(access);
+
+        const path = daemonPath();
+        const connect = new Adw.PreferencesGroup({
+            title: _("Connect an agent"),
+            description: _("The agent starts OrganizedTodo's MCP server itself with this command; "
+                + "nothing runs until it does."),
+        });
+        const claudeCode = `claude mcp add organizedtodo -- ${GLib.shell_quote(path)} mcp`;
+        connect.add(copyRow(window, _("Claude Code"), claudeCode));
+        const config = JSON.stringify({ mcpServers: { organizedtodo: { command: path, args: ["mcp"] } } }, null, 2);
+        connect.add(copyRow(window, _("Other agents (JSON configuration)"), `${path} mcp`, config));
+        page.add(connect);
+        return page;
     }
 
     _dataPage(window) {

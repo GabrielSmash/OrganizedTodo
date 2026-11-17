@@ -3,8 +3,11 @@ use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
 
+use serde_json::Value;
+
+use crate::agent::{self, Request};
 use crate::model::Workspace;
-use crate::preferences::Preferences;
+use crate::preferences::{AgentAccess, Preferences};
 use crate::store::Store;
 
 type Job = Box<dyn FnOnce(&Store) + Send>;
@@ -117,6 +120,39 @@ impl StoreHandle {
         })
         .await
     }
+
+    /// One AI agent request, in a single job: the access check, finding things by name and
+    /// changing them happen with nothing in between. Returns the reply and whether it saved.
+    /// Only requests that write are saved, and only when they succeed.
+    pub async fn agent_call(&self, request: Request) -> Result<(Value, bool), String> {
+        self.run(move |store| {
+            let preferences = store.preferences();
+            let needed = request.needs();
+            if preferences.agent_access < needed {
+                return Err(refusal(preferences.agent_access));
+            }
+            let mut workspace = store.load()?;
+            let reply = agent::run(&mut workspace, preferences, &request)?;
+            let writes = needed == AgentAccess::Write;
+            if writes {
+                store.save(&workspace).map_err(|error| error.to_string())?;
+            }
+            Ok((reply, writes))
+        })
+        .await
+    }
+}
+
+/// What the agent is told when the user has not allowed what it asked for
+fn refusal(access: AgentAccess) -> String {
+    match access {
+        AgentAccess::Off => "AI agents are turned off in OrganizedTodo; the user can allow \
+            them in its settings, tab \"AI agents\""
+            .into(),
+        _ => "OrganizedTodo only lets AI agents read; to change anything, the user must choose \
+            \"Read and change them\" in its settings, tab \"AI agents\""
+            .into(),
+    }
 }
 
 #[cfg(test)]
@@ -226,5 +262,34 @@ mod tests {
     #[test]
     fn spawn_reports_open_errors() {
         assert!(StoreHandle::spawn(|| Store::open(Path::new("/nonexistent"), None)).is_err());
+    }
+
+    #[test]
+    fn agent_calls_follow_agent_access_and_only_successful_writes_are_saved() {
+        let handle = memory_handle();
+        let call = |json: &str| {
+            futures_lite::future::block_on(handle.agent_call(Request::parse(json).unwrap()))
+        };
+        let allow = |value: &'static str| {
+            futures_lite::future::block_on(
+                handle.run(move |store| store.set_string("agent-access", value)),
+            )
+        };
+        let add = r#"{"tool":"add_project","args":{"name":"Work"}}"#;
+        let list = r#"{"tool":"list_projects","args":{}}"#;
+
+        assert!(call(list).unwrap_err().contains("turned off"));
+        allow("read");
+        assert_eq!(call(list).unwrap(), (serde_json::json!([]), false));
+        let refused = call(add).unwrap_err();
+        assert!(refused.contains("only lets AI agents read"));
+        // The option's name as the settings window shows it (prefs.js), so the agent can guide the user
+        assert!(refused.contains("\"Read and change them\""));
+        allow("write");
+        let (reply, saved) = call(add).unwrap();
+        assert_eq!((reply["name"].as_str(), saved), (Some("Work"), true));
+        // Saved: the next call sees it; a refused duplicate saves nothing
+        assert!(call(add).unwrap_err().contains("already exists"));
+        assert_eq!(call(list).unwrap().0.as_array().unwrap().len(), 1);
     }
 }

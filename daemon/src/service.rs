@@ -3,6 +3,7 @@ use zbus::interface;
 use zbus::object_server::SignalEmitter;
 
 use crate::actor::StoreHandle;
+use crate::agent::Request;
 use crate::model::Workspace;
 use crate::preferences::Preferences;
 
@@ -84,6 +85,25 @@ impl TodoService {
             .map_err(fdo::Error::Failed)?;
         Self::notify_changed(&emitter).await;
         Ok(count as u32)
+    }
+
+    /// For AI agents, through `organizedtodo-daemon mcp`: a request as JSON
+    /// ({"tool": ..., "args": {...}}), the reply as JSON. Error texts are written for the agent.
+    async fn agent_call(
+        &self,
+        #[zbus(signal_emitter)] emitter: SignalEmitter<'_>,
+        request: String,
+    ) -> fdo::Result<String> {
+        let request = Request::parse(&request).map_err(fdo::Error::InvalidArgs)?;
+        let (reply, saved) = self
+            .store
+            .agent_call(request)
+            .await
+            .map_err(fdo::Error::Failed)?;
+        if saved {
+            Self::notify_changed(&emitter).await;
+        }
+        Ok(reply.to_string())
     }
 
     // D-Bus has no optional values: an empty id means nothing was created.
